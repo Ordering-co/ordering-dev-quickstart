@@ -1,0 +1,11 @@
+name: Idea or request
+description: Suggest an example, a client, or an improvement.
+labels: ["idea"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would help you?
+      description: What are you trying to build or do with Ordering.co?
+    validations:
+      required: true

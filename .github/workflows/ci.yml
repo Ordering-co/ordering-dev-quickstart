@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 13 * * 1"   # weekly, to catch API or MCP changes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets (gitleaks)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks git . --config .gitleaks.toml --redact --verbose
+
+      - name: Configs are valid and hold no literal keys
+        run: |
+          for f in .mcp.json .cursor/mcp.json .vscode/mcp.json; do
+            python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$f" && echo "valid: $f"
+          done
+          if git grep -nE 'ord_mcp_[A-Za-z0-9_-]{20,}' -- .; then
+            echo "::error::Something that looks like a real MCP key is committed."; exit 1
+          fi
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "::error::.env is committed."; exit 1
+          fi
+
+      - name: Lint the helper script
+        run: |
+          bash -n ordering
+          shellcheck ordering
+
+      - name: Helper works without keys
+        run: |
+          ./ordering help
+          ./ordering spec
+          ./ordering doctor || test $? -eq 1
+
+  smoke:
+    # Live check against a real project with a READ-scoped key.
+    # Runs only where the ORDERING_PROJECT variable and ORDERING_MCP_KEY secret exist,
+    # so forks and outside pull requests skip it.
+    needs: checks
+    if: ${{ vars.ORDERING_PROJECT != '' }}
+    runs-on: ubuntu-latest
+    env:
+      ORDERING_PROJECT: ${{ vars.ORDERING_PROJECT }}
+      ORDERING_MCP_KEY: ${{ secrets.ORDERING_MCP_KEY }}
+      ORDERING_API_KEY: ${{ secrets.ORDERING_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Doctor against the live API
+        run: ./ordering doctor

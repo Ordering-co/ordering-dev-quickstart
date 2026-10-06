@@ -1,0 +1,394 @@
+#!/usr/bin/env bash
+# ordering: a small helper for the Ordering.co developer quickstart.
+#
+#   ./ordering doctor            Check your project, MCP key and API key
+#   ./ordering claude [args]     Start Claude Code with your .env loaded
+#   ./ordering codex [args]      Start Codex with the Ordering MCP configured
+#   ./ordering cursor | code     Open this folder in Cursor or VS Code with your .env loaded
+#   ./ordering api METHOD PATH [JSON | @file.json]
+#                                Call the REST API (non-GET requests ask for confirmation)
+#   ./ordering spec              Download the current OpenAPI spec to spec/openapi.json
+#
+# Requirements: bash and curl. jq or python3 for doctor and pretty output.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API_HOST="https://api.ordering.co"
+API_VERSION="v400"
+SPEC_URL="https://docs.ordering.co/api-reference/openapi.json"
+DOCS_URL="https://docs.ordering.co/docs/developers/"
+
+# ---------------------------------------------------------------- output
+
+if [ -t 1 ]; then
+  C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_B=$'\033[1m'; C_0=$'\033[0m'
+else
+  C_OK=""; C_WARN=""; C_ERR=""; C_DIM=""; C_B=""; C_0=""
+fi
+ok()    { printf '  %s✔%s %s\n' "$C_OK" "$C_0" "$*"; }
+warn()  { printf '  %s⚠%s %s\n' "$C_WARN" "$C_0" "$*"; }
+fail()  { printf '  %s✘%s %s\n' "$C_ERR" "$C_0" "$*"; }
+hint()  { printf '    %s%s%s\n' "$C_DIM" "$*" "$C_0"; }
+title() { printf '\n%s%s%s\n' "$C_B" "$*" "$C_0"; }
+die()   { printf '%serror:%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------- .env
+
+# Reads ORDERING_* variables from .env without executing it.
+# Variables already set in your shell take precedence, like most dotenv tools.
+ENV_FILE="$ROOT/.env"
+ENV_SOURCES=""
+load_env() {
+  [ -f "$ENV_FILE" ] || return 0
+  local line key value
+  local first=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    if [ "$first" = 1 ]; then line="${line#$'\xef\xbb\xbf'}"; first=0; fi
+    if [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?(ORDERING_[A-Z0-9_]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      key="${BASH_REMATCH[2]}"
+      value="${BASH_REMATCH[3]}"
+      if [[ "$value" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ ]] || [[ "$value" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      else
+        # A comment starts at " #". A # inside the value is kept.
+        if [[ "$value" =~ ^(.*[^[:space:]])[[:space:]]+#.*$ ]]; then value="${BASH_REMATCH[1]}"; fi
+        case "$value" in \#*) value="" ;; esac
+        value="${value%"${value##*[![:space:]]}"}"
+      fi
+      if [ -z "${!key:-}" ] && [ -n "$value" ]; then
+        export "$key=$value"
+        ENV_SOURCES="$ENV_SOURCES $key"
+      fi
+    fi
+  done < "$ENV_FILE"
+}
+
+source_of() {
+  case " $ENV_SOURCES " in
+    *" $1 "*) echo ".env" ;;
+    *) echo "shell" ;;
+  esac
+}
+
+# Shows only the type prefix and the last 4 characters.
+mask() {
+  local v="$1" prefix=""
+  case "$v" in ord_mcp_*) prefix="ord_mcp_" ;; esac
+  if [ "${#v}" -le 12 ]; then echo "${prefix}****"; else echo "${prefix}…${v: -4}"; fi
+}
+
+lang()    { echo "${ORDERING_LANG:-en}"; }
+api_base() { echo "$API_HOST/$API_VERSION/$(lang)/${ORDERING_PROJECT}"; }
+mcp_url() { echo "$API_HOST/mcp/${ORDERING_PROJECT}"; }
+
+require_project() {
+  [ -n "${ORDERING_PROJECT:-}" ] || die "ORDERING_PROJECT is empty. Run: cp .env.example .env, fill it in, then ./ordering doctor"
+}
+
+# ---------------------------------------------------------------- JSON helpers
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# json_get <json> <dotted.path>  → prints the value, or nothing
+json_get() {
+  local json="$1" path="$2"
+  if have jq; then
+    printf '%s' "$json" | jq -r --arg p "$path" \
+      'getpath($p | split(".") | map(tonumber? // .)) | if . == null then empty elif type == "object" or type == "array" then tojson else tostring end' \
+      2>/dev/null || true
+  elif have python3; then
+    printf '%s' "$json" | python3 -c '
+import json, sys
+try:
+    v = json.load(sys.stdin)
+    for k in sys.argv[1].split("."):
+        v = v[int(k)] if isinstance(v, list) else v.get(k)
+    if v is not None:
+        print(v if isinstance(v, str) else json.dumps(v))
+except Exception:
+    pass
+' "$path"
+  fi
+}
+
+# days_until <ISO-8601 timestamp>  → whole days from now (can be negative)
+days_until() {
+  if have jq; then
+    jq -rn --arg t "$1" '(($t | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601) - now) / 86400 | floor' 2>/dev/null || true
+  elif have python3; then
+    python3 -c '
+import sys, datetime
+t = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+print(int((t - datetime.datetime.now(datetime.timezone.utc)).total_seconds() // 86400))
+' "$1" 2>/dev/null || true
+  fi
+}
+
+# pretty <file>: prints JSON nicely, or the raw body if it is not JSON
+pretty() {
+  if have jq && jq . "$1" 2>/dev/null; then return; fi
+  if have python3 && python3 -m json.tool "$1" 2>/dev/null; then return; fi
+  cat "$1"; echo
+}
+
+# Temporary files are removed on exit.
+TMP_DIR="$(mktemp -d)"; chmod 700 "$TMP_DIR"
+trap 'rm -rf "$TMP_DIR"' EXIT
+tmpfile() { mktemp "$TMP_DIR/f.XXXXXX"; }
+
+# header_file "Name: value" → path of a private file for curl -H @file.
+# Keeps keys out of the process list.
+header_file() { local f; f="$(tmpfile)"; printf '%s\n' "$1" > "$f"; echo "$f"; }
+
+# http curl-args...  → sets HTTP_BODY and HTTP_CODE (000 when unreachable)
+HTTP_BODY=""; HTTP_CODE=""
+http() {
+  local tmp; tmp="$(tmpfile)"
+  HTTP_CODE="$(curl -sS -m 20 -o "$tmp" -w '%{http_code}' "$@" 2>/dev/null)" || HTTP_CODE="000"
+  [ -n "$HTTP_CODE" ] || HTTP_CODE="000"
+  HTTP_BODY="$(cat "$tmp")"
+}
+
+# ---------------------------------------------------------------- doctor
+
+cmd_doctor() {
+  local problems=0
+
+  title "Project"
+  if [ ! -f "$ENV_FILE" ]; then
+    warn "No .env file. Create it with: cp .env.example .env"
+  fi
+  if [ -z "${ORDERING_PROJECT:-}" ]; then
+    fail "ORDERING_PROJECT is empty"
+    hint "Your project ID is lowercase with no spaces. It is the last part of your MCP Server URL."
+    problems=$((problems + 1))
+  elif [[ ! "$ORDERING_PROJECT" =~ ^[a-z0-9_-]+$ ]]; then
+    fail "ORDERING_PROJECT='$ORDERING_PROJECT' should be lowercase letters, numbers, - or _"
+    problems=$((problems + 1))
+  else
+    http "$(api_base)/configs"
+    if [ "$HTTP_CODE" = "200" ] && [ "$(json_get "$HTTP_BODY" error)" = "false" ]; then
+      ok "Project '$ORDERING_PROJECT' found · language '$(lang)' · from $(source_of ORDERING_PROJECT)"
+    elif [ "$HTTP_CODE" = "000" ]; then
+      fail "Could not reach $API_HOST. Check your internet connection or proxy."
+      problems=$((problems + 1))
+    else
+      fail "Project '$ORDERING_PROJECT' was not accepted (HTTP $HTTP_CODE)"
+      hint "API said: $(json_get "$HTTP_BODY" result | head -c 200)"
+      hint "Check the spelling in .env, and ORDERING_LANG if you changed it."
+      problems=$((problems + 1))
+    fi
+  fi
+
+  title "MCP (AI agents)"
+  if [ -z "${ORDERING_MCP_KEY:-}" ]; then
+    warn "ORDERING_MCP_KEY is empty. Skip this if you only use the REST API."
+    hint "Create one in Dashboard > Settings > Apps & developers > API & integrations > MCP"
+  elif [ -z "${ORDERING_PROJECT:-}" ]; then
+    warn "Set ORDERING_PROJECT first."
+  else
+    case "$ORDERING_MCP_KEY" in
+      ord_mcp_*) ;;
+      *) warn "MCP keys usually start with ord_mcp_. Is this an API key instead? API keys go in ORDERING_API_KEY." ;;
+    esac
+    http -X POST "$(mcp_url)" \
+      -H "@$(header_file "Authorization: Bearer $ORDERING_MCP_KEY")" \
+      -H "Content-Type: application/json" \
+      -H "Accept: application/json, text/event-stream" \
+      -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}'
+    local body="$HTTP_BODY"
+    # Streamable HTTP can answer as server-sent events: keep the first data line.
+    case "$body" in *data:*) body="$(printf '%s\n' "$body" | sed -n 's/^data: *//p' | head -1)";; esac
+    if [ "$HTTP_CODE" = "200" ] && [ -n "$(json_get "$body" result.structuredContent.project)" ]; then
+      local sc name role project scope expires days
+      sc="result.structuredContent"
+      name="$(json_get "$body" "$sc.user.name")"
+      role="$(json_get "$body" "$sc.user.role")"
+      project="$(json_get "$body" "$sc.project")"
+      scope="$(json_get "$body" "$sc.token.scope")"
+      expires="$(json_get "$body" "$sc.token.expires_at")"
+      ok "Connected as $name ($role) · key $(mask "$ORDERING_MCP_KEY") from $(source_of ORDERING_MCP_KEY)"
+      [ "$project" = "$ORDERING_PROJECT" ] || warn "Key belongs to project '$project', but ORDERING_PROJECT is '$ORDERING_PROJECT'"
+      if [ "$scope" = "read" ]; then
+        ok "Scope: read"
+      else
+        warn "Scope: $scope. A read key is safer for everyday work; agents can change real data with a write key."
+      fi
+      if [ -n "$expires" ]; then
+        days="$(days_until "$expires")"
+        if [ -z "$days" ]; then
+          ok "Expires: $expires"
+        elif [ "$days" -lt 0 ]; then
+          fail "Key expired on ${expires%%T*}. Create a new one in the Dashboard."
+          problems=$((problems + 1))
+        elif [ "$days" -le 3 ]; then
+          warn "Key expires in $days day(s), on ${expires%%T*}. Create a new one before then."
+        else
+          ok "Expires in $days days (${expires%%T*})"
+        fi
+      fi
+    elif [ "$HTTP_CODE" = "000" ]; then
+      fail "Could not reach $(mcp_url)"
+      problems=$((problems + 1))
+    else
+      local msg
+      msg="$(json_get "$body" error.message)"; [ -n "$msg" ] || msg="$(json_get "$body" result)"
+      fail "MCP rejected the key (HTTP $HTTP_CODE): ${msg:-no details}"
+      case "$msg" in
+        *"Invalid MCP token"*) hint "The key is wrong, expired or revoked. Create a new one in the Dashboard." ;;
+        *"project does not exist"*) hint "Check ORDERING_PROJECT." ;;
+        *"token is required"*) hint "The key did not reach the server. Check ORDERING_MCP_KEY in .env." ;;
+      esac
+      problems=$((problems + 1))
+    fi
+  fi
+
+  title "REST API (your code)"
+  if [ -z "${ORDERING_API_KEY:-}" ]; then
+    warn "ORDERING_API_KEY is empty. Skip this if you only use the MCP."
+    hint "Create one in Dashboard > Settings > Developers > API Keys > Add API key"
+  elif [ -z "${ORDERING_PROJECT:-}" ]; then
+    warn "Set ORDERING_PROJECT first."
+  else
+    case "$ORDERING_API_KEY" in
+      ord_mcp_*) fail "ORDERING_API_KEY holds an MCP key. MCP keys go in ORDERING_MCP_KEY."; problems=$((problems + 1)) ;;
+      *)
+        http -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" "$(api_base)/orders?orderBy=-id&page=1&page_size=1&mode=dashboard"
+        if [ "$HTTP_CODE" = "200" ] && [ "$(json_get "$HTTP_BODY" error)" = "false" ]; then
+          ok "API key $(mask "$ORDERING_API_KEY") accepted (GET /orders) · from $(source_of ORDERING_API_KEY)"
+        else
+          fail "API key was rejected for GET /orders (HTTP $HTTP_CODE): $(json_get "$HTTP_BODY" result | head -c 200)"
+          hint "Check the key in Dashboard > Settings > Developers > API Keys, and that it belongs to '$ORDERING_PROJECT'."
+          problems=$((problems + 1))
+        fi
+        ;;
+    esac
+    warn "There is no sandbox: POST, PUT, PATCH and DELETE change production data."
+  fi
+
+  if [ -z "${ORDERING_MCP_KEY:-}" ] && [ -z "${ORDERING_API_KEY:-}" ]; then
+    echo
+    fail "No keys yet. Add ORDERING_MCP_KEY, ORDERING_API_KEY or both to .env."
+    problems=$((problems + 1))
+  fi
+
+  title "Tools"
+  local found=""
+  for t in claude codex cursor code; do have "$t" && found="$found $t"; done
+  if [ -n "$found" ]; then ok "Found:$found"; else warn "No agent or editor CLI found (claude, codex, cursor, code)"; fi
+  have jq || have python3 || warn "Install jq or python3 for full doctor output"
+
+  echo
+  if [ "$problems" -eq 0 ]; then
+    printf '%sReady.%s Next: ./ordering claude   or   ./ordering api GET "/orders?page_size=5&mode=dashboard"\n' "$C_OK" "$C_0"
+  else
+    printf '%s%d problem(s) found.%s See docs/troubleshooting.md\n' "$C_ERR" "$problems" "$C_0"
+    exit 1
+  fi
+}
+
+# ---------------------------------------------------------------- launchers
+
+# Agents get the MCP key, not the REST API key. Inside the agent, ./ordering api
+# still reads the API key from .env, so its write confirmation keeps working.
+cmd_claude() {
+  have claude || die "Claude Code is not installed. See https://code.claude.com/docs"
+  require_project
+  cd "$ROOT"
+  unset ORDERING_API_KEY
+  exec claude "$@"
+}
+
+cmd_codex() {
+  have codex || die "Codex is not installed. See https://developers.openai.com/codex"
+  require_project
+  cd "$ROOT"
+  unset ORDERING_API_KEY
+  exec codex \
+    -c "mcp_servers.ordering.url=\"$(mcp_url)\"" \
+    -c 'mcp_servers.ordering.bearer_token_env_var="ORDERING_MCP_KEY"' \
+    "$@"
+}
+
+cmd_editor() {
+  local bin="$1"; shift
+  have "$bin" || die "'$bin' command not found. In the editor, run the command palette action that installs the '$bin' shell command."
+  exec "$bin" "$ROOT" "$@"
+}
+
+# ---------------------------------------------------------------- api
+
+cmd_api() {
+  [ $# -ge 2 ] || die 'Usage: ./ordering api METHOD PATH [JSON | @file.json]   e.g. ./ordering api GET "/orders?page_size=5&mode=dashboard"'
+  require_project
+  [ -n "${ORDERING_API_KEY:-}" ] || die "ORDERING_API_KEY is empty. Add it to .env (see .env.example)."
+
+  local method path data
+  method="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"; path="$2"; data="${3:-}"
+  case "$method" in GET|POST|PUT|PATCH|DELETE) ;; *) die "Unsupported method: $method" ;; esac
+  case "$path" in /*) ;; *) path="/$path" ;; esac
+  case "$path" in *://*) die "PATH must be relative, e.g. /orders" ;; esac
+
+  if [ "$method" != "GET" ]; then
+    # Writes need a person at an interactive terminal. This is a guardrail against
+    # accidental writes, not a security boundary: anyone with the key can call the API.
+    if [ ! -t 0 ] || [ ! -r /dev/tty ]; then
+      die "$method changes production data and needs confirmation at an interactive terminal. Run it yourself."
+    fi
+    printf '%s%s %s%s on project %s%s%s (production, no sandbox)\n' "$C_WARN" "$method" "$path" "$C_0" "$C_B" "$ORDERING_PROJECT" "$C_0" >/dev/tty
+    printf 'Type the project ID to confirm: ' >/dev/tty
+    local answer; IFS= read -r answer </dev/tty
+    [ "$answer" = "$ORDERING_PROJECT" ] || die "Not confirmed. Nothing was sent."
+  fi
+
+  local args=(-sS -m 30 -X "$method" -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json")
+  if [ -n "$data" ]; then
+    case "$data" in @*) [ -f "${data#@}" ] || die "File not found: ${data#@}" ;; esac
+    args+=(-H "Content-Type: application/json" --data-binary "$data")
+  fi
+  local tmp code
+  tmp="$(tmpfile)"
+  code="$(curl "${args[@]}" -o "$tmp" -w '%{http_code}' "$(api_base)$path")" || code="000"
+  [ -n "$code" ] || code="000"
+  pretty "$tmp"
+  if [ "$code" = "000" ] || [ "$code" -ge 400 ]; then
+    printf '%sHTTP %s%s\n' "$C_ERR" "$code" "$C_0" >&2
+    exit 1
+  fi
+}
+
+# ---------------------------------------------------------------- spec
+
+cmd_spec() {
+  mkdir -p "$ROOT/spec"
+  curl -fsS -m 60 -o "$ROOT/spec/openapi.json.tmp" "$SPEC_URL" || die "Download failed: $SPEC_URL"
+  mv "$ROOT/spec/openapi.json.tmp" "$ROOT/spec/openapi.json"
+  local n=""
+  if have jq; then
+    n="$(jq '[.paths[] | keys[] | select(. == "get" or . == "post" or . == "put" or . == "patch" or . == "delete")] | length' "$ROOT/spec/openapi.json" 2>/dev/null || true)"
+  fi
+  ok "Saved spec/openapi.json${n:+ ($n operations)}. Import it in Postman, or generate a typed client from it."
+}
+
+# ---------------------------------------------------------------- main
+
+usage() {
+  sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  echo
+  echo "Docs: $DOCS_URL"
+}
+
+load_env
+cmd="${1:-help}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+  doctor)        cmd_doctor ;;
+  claude)        cmd_claude "$@" ;;
+  codex)         cmd_codex "$@" ;;
+  cursor|code)   cmd_editor "$cmd" "$@" ;;
+  api)           cmd_api "$@" ;;
+  spec)          cmd_spec ;;
+  help|-h|--help) usage ;;
+  *)             usage; exit 1 ;;
+esac

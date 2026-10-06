@@ -1,0 +1,38 @@
+name: Setup problem
+description: Something in the quickstart didn't work for you.
+labels: ["setup"]
+body:
+  - type: markdown
+    attributes:
+      value: "**Never paste a key, token or customer data here.** Replace them with `<redacted>`."
+  - type: dropdown
+    id: client
+    attributes:
+      label: Where did it fail?
+      options:
+        - ./ordering doctor
+        - Claude Code
+        - Codex
+        - Cursor
+        - VS Code
+        - REST API requests
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of ./ordering doctor
+      description: Keys are masked in this output, but check before posting.
+      render: text
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you expect, and what happened?
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15, Ubuntu 24.04, Windows 11 + WSL…

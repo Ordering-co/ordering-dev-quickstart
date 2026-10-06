@@ -1,0 +1,25 @@
+# Session login, for apps where your customers sign in.
+# This returns a session token (bearerAuth) for that user. It changes no data,
+# but it does sign in, so use a test user. Put its credentials in .env as
+# ORDERING_TEST_EMAIL and ORDERING_TEST_PASSWORD; never write them in this file.
+# Full contract: https://docs.ordering.co/api-reference/#tag/auth/POST/auth
+
+@base = https://api.ordering.co/v400/{{$processEnv ORDERING_LANG}}/{{$processEnv ORDERING_PROJECT}}
+
+### Log in with email and password
+# @name login
+POST {{base}}/auth
+Content-Type: application/json
+Accept: application/json
+
+{
+  "email": "{{$processEnv ORDERING_TEST_EMAIL}}",
+  "password": "{{$processEnv ORDERING_TEST_PASSWORD}}"
+}
+
+### Use the session token from the login response
+# The token is in the login response under result.session.access_token
+# (the same field Ordering's own SDK reads).
+GET {{base}}/users/{{login.response.body.result.id}}
+Authorization: Bearer {{login.response.body.result.session.access_token}}
+Accept: application/json

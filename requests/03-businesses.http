@@ -1,0 +1,23 @@
+# Businesses and menus. All read-only.
+# Full contract: https://docs.ordering.co/api-reference/#tag/business
+
+@base = https://api.ordering.co/v400/{{$processEnv ORDERING_LANG}}/{{$processEnv ORDERING_PROJECT}}
+@key = {{$processEnv ORDERING_API_KEY}}
+
+### Businesses in your project
+# ./ordering api GET "/business?params=id,name,slug,enabled&mode=dashboard"
+GET {{base}}/business?params=id,name,slug,enabled&mode=dashboard
+X-Api-Key: {{key}}
+Accept: application/json
+
+### Categories of one business (replace 1 with a business ID)
+# ./ordering api GET "/business/1/categories"
+GET {{base}}/business/1/categories
+X-Api-Key: {{key}}
+Accept: application/json
+
+### Products in one category (replace both IDs)
+# ./ordering api GET "/business/1/categories/1/products"
+GET {{base}}/business/1/categories/1/products
+X-Api-Key: {{key}}
+Accept: application/json

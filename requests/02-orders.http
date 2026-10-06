@@ -1,0 +1,30 @@
+# Orders. All read-only.
+# List parameters: orderBy (prefix - for descending), page, page_size,
+# params (comma-separated fields) and where (JSON filter).
+# Full contract: https://docs.ordering.co/api-reference/#tag/orders/GET/orders
+
+@base = https://api.ordering.co/v400/{{$processEnv ORDERING_LANG}}/{{$processEnv ORDERING_PROJECT}}
+@key = {{$processEnv ORDERING_API_KEY}}
+
+### Last 5 orders, newest first
+# ./ordering api GET "/orders?orderBy=-id&page=1&page_size=5&mode=dashboard"
+GET {{base}}/orders?orderBy=-id&page=1&page_size=5&mode=dashboard
+X-Api-Key: {{key}}
+Accept: application/json
+
+### Only some fields
+# ./ordering api GET "/orders?orderBy=-id&page_size=5&mode=dashboard&params=id,status,total,created_at"
+GET {{base}}/orders?orderBy=-id&page_size=5&mode=dashboard&params=id,status,total,created_at
+X-Api-Key: {{key}}
+Accept: application/json
+
+### Page 2
+GET {{base}}/orders?orderBy=-id&page=2&page_size=5&mode=dashboard
+X-Api-Key: {{key}}
+Accept: application/json
+
+### One order (replace 1 with an ID from the list above)
+# ./ordering api GET "/orders/1?mode=dashboard"
+GET {{base}}/orders/1?mode=dashboard
+X-Api-Key: {{key}}
+Accept: application/json

@@ -1,0 +1,9 @@
+# Checks that the base URL is right and your project exists.
+# Terminal: ./ordering api GET /configs
+
+@base = https://api.ordering.co/v400/{{$processEnv ORDERING_LANG}}/{{$processEnv ORDERING_PROJECT}}
+
+### Project settings
+GET {{base}}/configs
+X-Api-Key: {{$processEnv ORDERING_API_KEY}}
+Accept: application/json

@@ -1,0 +1,13 @@
+# Your keys live here. Never commit them.
+.env
+.env.*
+!.env.example
+
+# Downloaded by ./ordering spec
+spec/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/

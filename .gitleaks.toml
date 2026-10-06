@@ -1,0 +1,16 @@
+# Default gitleaks rules plus Ordering.co key formats.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ordering-mcp-key"
+description = "Ordering.co MCP key"
+regex = '''ord_mcp_[A-Za-z0-9_-]{20,}'''
+keywords = ["ord_mcp_"]
+
+[[rules]]
+id = "ordering-api-key-assignment"
+description = "Ordering.co API key assigned in a file"
+regex = '''ORDERING_API_KEY\s*[=:]\s*["']?([A-Za-z0-9_\-]{20,})'''
+secretGroup = 1
+keywords = ["ORDERING_API_KEY"]

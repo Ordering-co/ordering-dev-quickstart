@@ -1,0 +1,24 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "ordering-project",
+      "description": "Ordering.co project ID (the last part of your MCP Server URL)"
+    },
+    {
+      "type": "promptString",
+      "id": "ordering-mcp-key",
+      "description": "Ordering.co MCP key (starts with ord_mcp_)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "ordering": {
+      "type": "http",
+      "url": "https://api.ordering.co/mcp/${input:ordering-project}",
+      "headers": {
+        "Authorization": "Bearer ${input:ordering-mcp-key}"
+      }
+    }
+  }
+}
