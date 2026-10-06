@@ -1,12 +1,9 @@
-# Set up the quickstart
+# Connect to Ordering.co
 
-Paste this into Claude Code or Codex, opened in this folder.
+Paste this into Claude Code or Codex, from any folder:
 
 ```text
-Set up this repository so I can use Ordering.co. Follow AGENTS.md.
-Create my .env from .env.example and tell me which values to fill in.
-I will paste my keys into the file myself: never ask me to paste a key in this chat.
-When I say I'm done, run ./ordering doctor and explain the result.
+Connect me to Ordering.co. Follow the steps in SETUP.md from https://github.com/Finitless-com/ordering-dev-quickstart
 ```
 
-When the doctor reports no problems, restart the agent with `./ordering claude` or `./ordering codex` so it loads the Ordering MCP.
+The agent follows [SETUP.md](../SETUP.md): it gets this repo, asks for your Server URL, opens a file for your key, checks the connection and installs the server in Claude Code and Codex.

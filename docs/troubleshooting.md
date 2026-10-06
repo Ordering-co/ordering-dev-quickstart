@@ -21,6 +21,9 @@ The key did not reach the server. Usually the agent was started without your `.e
 **Claude Code says `ORDERING_PROJECT` or `ORDERING_MCP_KEY` is missing**
 The agent started before your `.env` was filled in, or without `./ordering`. Fill in `.env`, quit, and start again with `./ordering claude`.
 
+**The agent doesn't show the `ordering` tools after `./ordering install`**
+Open a **new** terminal: the terminal you used for setup doesn't have the key yet. Then start `claude` or `codex` again.
+
 **The agent doesn't show the `ordering` tools**
 - **Claude Code:** run `/mcp`. If `ordering` is pending, approve it. If it failed, quit and start again with `./ordering claude`.
 - **Codex:** start it with `./ordering codex`; plain `codex` doesn't load this repo's server.
