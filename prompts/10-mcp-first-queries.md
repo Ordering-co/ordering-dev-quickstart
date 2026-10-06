@@ -2,17 +2,49 @@
 
 Start the agent with `./ordering claude` or `./ordering codex`, then try these.
 
-## Check the connection
+## Try these first
 
 ```text
 Who am I in Ordering? Tell me my project, my role, my key's scope and when it expires.
 ```
 
-## Orders
+```text
+How many orders came in today, by status?
+```
 
 ```text
-List my last 5 orders with their ID, status, business, customer name and total.
+Show my last 5 orders with customer, business and total.
 ```
+
+```text
+Which of my businesses are open right now?
+```
+
+```text
+What are the best-selling products this week?
+```
+
+## With a write-scoped key
+
+Your agent asks for confirmation before making any of these:
+
+```text
+Change order #<id> to <status>.
+```
+
+```text
+Close <business> for today, or open it again.
+```
+
+```text
+Snooze <product> until tomorrow.
+```
+
+```text
+Change the price of <product> to <price>.
+```
+
+## Orders
 
 ```text
 How many orders did my project receive yesterday? Group them by status.

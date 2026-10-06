@@ -37,11 +37,13 @@ Use `--client claude` if you are Claude Code, or `--client codex` if you are Cod
 cd ~/ordering-dev-quickstart && ./ordering login start --client claude
 ```
 
-It prints a link and a code, and opens the browser when it can. Send both to the developer, adapted to their language:
+**The developer cannot see your tool output.** It prints a `TELL THE USER` block with a link and a code, and does not open a browser itself. Your reply MUST include both the link and the code from that block, in the same message, adapted to their language. Do not open the browser yourself: the developer opens the link.
 
 > Open this link and sign in to Ordering.co with your Dashboard or Billing account: **<link>**
 > When the page asks, type this code: **<code>**
 > Read the data notice, keep **Read** access unless you need changes, and click Connect.
+
+If the developer later says the page is asking for a code they don't have (it scrolled away, or they came back later), run `cd ~/ordering-dev-quickstart && ./ordering login code` and tell them the code it prints. Never print or guess the key itself.
 
 Then wait for them:
 
@@ -91,16 +93,28 @@ If it prints `✘` or an unknown-shell warning, show them the manual command it 
 
 ## 5. Finish
 
-Tell them, briefly and in their language:
+This is the moment they should feel it working: give them a concrete menu, not just an invitation to ask something. Tell them, briefly and in their language, as ready-to-copy lines (keep the whole menu to about 8 lines):
 
-> Ready.
-> 1. Close this session and open a **new** terminal.
-> 2. Start `claude` or `codex`.
-> 3. Ask: **"Who am I in Ordering?"**
+> Ready. Close this session, open a **new** terminal, start `claude` or `codex`, and try one of these:
 >
+> - Who am I in Ordering?
+> - How many orders came in today, by status?
+> - Show my last 5 orders with customer, business and total.
+> - Which of my businesses are open right now?
+> - What are the best-selling products this week?
+
+If `doctor` in step 3 showed **`Scope: write`**, also offer 2-3 of these, and say you'll always ask for confirmation before making any change:
+
+> - Change order #<id> to \<status\>.
+> - Close \<business\> for today, or open it again.
+> - Snooze \<product\> until tomorrow.
+> - Change the price of \<product\> to \<price\>.
+
+Then add:
+
 > Your key expires in <N> days. To renew it, run `~/ordering-dev-quickstart/ordering login`, sign in again and open a new terminal.
 
-Take `<N>` from the `doctor` output.
+Take `<N>` and the scope from the `doctor` output in step 3.
 
 Add only if it applies:
 - **They use the desktop app** (started from the Dock or Start menu): it doesn't see the key. Start it from a terminal, or see `docs/manual-setup.md`.

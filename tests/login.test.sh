@@ -38,6 +38,12 @@ fresh; start
 check "start prints a link with id.deliver_token in the fragment" '[[ "$LINK" =~ /connect/#[0-9a-f]{32}\.[0-9a-f]{32}$ ]]'
 check "start prints a 12-hex verification code" '[[ "$CODE" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]]'
 check "private key is 0600" '[ "$(perms "$WORK/repo/.login/private.pem")" = "600" ]'
+# ./ordering's stdout is redirected to a file above, so it never sees a TTY: this is the
+# same situation as an AI agent session (CLAUDECODE set, or no TTY at all).
+check "non-tty start prints the TELL THE USER block" 'grep -q "TELL THE USER" "$WORK/start.out"'
+check "the block includes the link" 'grep -q "Open this link and sign in to Ordering.co: $LINK" "$WORK/start.out"'
+check "the block includes the code" 'grep -q "type this code: $CODE" "$WORK/start.out"'
+check "non-tty start does not try to open a browser" '! grep -qi "xdg-open\|/usr/bin/open" "$WORK/start.out"'
 node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > "$WORK/page.out"
 check "page delivers (204)" 'grep -q "\"deliver\":204" "$WORK/page.out"'
 "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/wait.out" 2>&1; rc=$?
@@ -69,6 +75,18 @@ node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "${KEY}X
 rc=0; "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/wait.out" 2>&1 || rc=$?
 check "a key whose name doesn't match is refused" '[ "$rc" != 0 ] && grep -q "could not be verified" "$WORK/wait.out"'
 check "nothing is saved" '! grep -q "ord_mcp_" "$WORK/repo/.env" 2>/dev/null'
+
+echo "# login code"
+fresh; start
+SECRET="$(cat "$WORK/repo/.login/secret")"
+"$WORK/repo/ordering" login code > "$WORK/code.out" 2>&1
+check "login code prints the current code" 'grep -q "$CODE" "$WORK/code.out"'
+check "login code shows the minutes left" '[[ "$(cat "$WORK/code.out")" =~ [0-9]+\ minute ]]'
+check "login code never prints the claim secret" '! grep -q "$SECRET" "$WORK/code.out"'
+check "login code never prints the private key" '! grep -q "PRIVATE KEY" "$WORK/code.out"'
+rm -rf "$WORK/repo/.login"
+rc=0; "$WORK/repo/ordering" login code > "$WORK/code2.out" 2>&1 || rc=$?
+check "login code with no sign-in in progress fails" '[ "$rc" != 0 ]'
 
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }

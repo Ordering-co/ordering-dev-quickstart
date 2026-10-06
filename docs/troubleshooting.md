@@ -29,6 +29,9 @@ Run `./ordering login` again.
 **`could not be verified`**
 The key that arrived wasn't created for your sign-in. Nothing was saved. Revoke keys you don't recognize in the Dashboard's MCP settings, then run `./ordering login` again.
 
+**The page asks for a code I don't have**
+Ask your agent to run `./ordering login code`. It re-prints the current code and the minutes left, without opening the browser and without showing your key. If it says no sign-in is in progress, run `./ordering login` again.
+
 **The page says you need administrator or business manager access**
 Only those roles can create MCP keys. Ask your project administrator.
 

@@ -14,9 +14,9 @@ Connect me to Ordering.co: clone https://github.com/Finitless-com/ordering-dev-q
 
 &nbsp;
 
-## 2 · Sign in when your browser opens
+## 2 · Sign in when your agent gives you the link, and type the code it shows you
 
-Sign in with your Ordering.co **Dashboard** or **Billing** account, type the code your agent shows you, and click **Connect**.
+Open the link, sign in with your Ordering.co **Dashboard** or **Billing** account, type the code, and click **Connect**.
 
 <sub>You never copy or paste a key. Read access is the default: your agent can look at your data, not change it. Only administrators and business managers can connect.</sub>
 
@@ -26,9 +26,11 @@ Sign in with your Ordering.co **Dashboard** or **Billing** account, type the cod
 
 > Who am I in Ordering?
 
-> List my last 5 orders with their status and total.
+> Show my last 5 orders with customer, business and total.
 
-> Which businesses are enabled in my project?
+> Which of my businesses are open right now?
+
+With a write key you can also change an order's status or open/close a business; your agent asks before every change.
 
 More ideas: [prompts/](prompts/)
 
