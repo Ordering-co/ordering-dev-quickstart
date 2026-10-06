@@ -13,7 +13,27 @@ Check your internet connection, VPN or corporate proxy.
 ## MCP
 
 **`Invalid MCP token`**
-The key is wrong, expired or revoked, or it is an older key created before the data notice existed. Create a new one in the Dashboard (an expired key offers **Create a replacement**) and replace `ORDERING_MCP_KEY` in `.env`.
+The key is wrong, expired or revoked, or it is an older key created before the data notice existed. Run `./ordering login` to get a new one. The manual alternative is to create a key in the Dashboard and replace `ORDERING_MCP_KEY` in `.env`.
+
+## Sign-in (`./ordering login`)
+
+**`Could not start the sign-in`**
+The sign-in service on docs.ordering.co can't be reached. Use the manual path in [manual-setup.md](manual-setup.md).
+
+**`Still waiting`**
+You haven't finished in the browser yet. Finish there, then run `./ordering login wait`. The link lasts 10 minutes.
+
+**`The sign-in link expired`**
+Run `./ordering login` again.
+
+**`could not be verified`**
+The key that arrived wasn't created for your sign-in. Nothing was saved. Revoke keys you don't recognize in the Dashboard's MCP settings, then run `./ordering login` again.
+
+**The page says you need administrator or business manager access**
+Only those roles can create MCP keys. Ask your project administrator.
+
+**The page says the notice is being updated**
+The data notice changed and the page hasn't caught up yet. Try again later, or create the key in the Dashboard.
 
 **`An MCP token is required`**
 The key did not reach the server. Usually the agent was started without your `.env` loaded. Start it with `./ordering claude`, `./ordering codex` or `./ordering cursor`.

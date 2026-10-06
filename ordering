@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ordering: a small helper for the Ordering.co developer quickstart.
 #
+#   ./ordering login             Sign in with your browser and get an MCP key (no copy-paste)
+#                                (agents: "login start", show the link and code, then "login wait")
 #   ./ordering init [SERVER_URL] Create .env, set your project from the Server URL, open the file
 #   ./ordering doctor            Check your project, MCP key and API key
 #   ./ordering install           Make the Ordering MCP available in Claude Code and Codex everywhere
@@ -15,9 +17,14 @@
 # Requirements: bash and curl. jq or python3 for doctor and pretty output.
 
 set -euo pipefail
+umask 077   # every file this script writes (.env, temporary keys) is private
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-API_HOST="https://api.ordering.co"
+API_HOST="${ORDERING_API_HOST:-https://api.ordering.co}"
+case "$API_HOST" in
+  https://api.ordering.co|http://127.0.0.1:*) ;;
+  *) echo "ORDERING_API_HOST must be https://api.ordering.co (or http://127.0.0.1 for tests)" >&2; exit 1 ;;
+esac
 API_VERSION="v400"
 SPEC_URL="https://docs.ordering.co/api-reference/openapi.json"
 DOCS_URL="https://docs.ordering.co/docs/developers/"
@@ -140,6 +147,7 @@ pretty() {
 # Temporary files are removed on exit.
 TMP_DIR="$(mktemp -d)"; chmod 700 "$TMP_DIR"
 trap 'rm -rf "$TMP_DIR"' EXIT
+trap 'exit 130' INT TERM
 tmpfile() { mktemp "$TMP_DIR/f.XXXXXX"; }
 
 # header_file "Name: value" → path of a private file for curl -H @file.
@@ -153,6 +161,19 @@ http() {
   HTTP_CODE="$(curl -sS -m 20 -o "$tmp" -w '%{http_code}' "$@" 2>/dev/null)" || HTTP_CODE="000"
   [ -n "$HTTP_CODE" ] || HTTP_CODE="000"
   HTTP_BODY="$(cat "$tmp")"
+}
+
+# mcp_whoami <project> <key>  → sets HTTP_CODE and MCP_BODY (the JSON-RPC result, SSE unwrapped)
+MCP_BODY=""
+mcp_whoami() {
+  http -X POST "$API_HOST/mcp/$1" \
+    -H "@$(header_file "Authorization: Bearer $2")" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}'
+  MCP_BODY="$HTTP_BODY"
+  # Streamable HTTP can answer as server-sent events: keep the first data line.
+  case "$MCP_BODY" in *data:*) MCP_BODY="$(printf '%s\n' "$MCP_BODY" | sed -n 's/^data: *//p' | head -1)";; esac
 }
 
 # ---------------------------------------------------------------- doctor
@@ -197,14 +218,8 @@ cmd_doctor() {
       ord_mcp_*) ;;
       *) warn "MCP keys usually start with ord_mcp_. Is this an API key instead? API keys go in ORDERING_API_KEY." ;;
     esac
-    http -X POST "$(mcp_url)" \
-      -H "@$(header_file "Authorization: Bearer $ORDERING_MCP_KEY")" \
-      -H "Content-Type: application/json" \
-      -H "Accept: application/json, text/event-stream" \
-      -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}'
-    local body="$HTTP_BODY"
-    # Streamable HTTP can answer as server-sent events: keep the first data line.
-    case "$body" in *data:*) body="$(printf '%s\n' "$body" | sed -n 's/^data: *//p' | head -1)";; esac
+    mcp_whoami "$ORDERING_PROJECT" "$ORDERING_MCP_KEY"
+    local body="$MCP_BODY"
     if [ "$HTTP_CODE" = "200" ] && [ -n "$(json_get "$body" result.structuredContent.project)" ]; then
       local sc name role project scope expires days
       sc="result.structuredContent"
@@ -228,10 +243,10 @@ cmd_doctor() {
         if [ -z "$days" ]; then
           ok "Expires: $expires"
         elif [ "$days" -lt 0 ]; then
-          fail "Key expired on ${expires%%T*}. Create a new one in the Dashboard."
+          fail "Key expired on ${expires%%T*}. Get a new one with: ./ordering login"
           problems=$((problems + 1))
         elif [ "$days" -le 3 ]; then
-          warn "Key expires in $days day(s), on ${expires%%T*}. Create a new one before then."
+          warn "Key expires in $days day(s), on ${expires%%T*}. Renew it with: ./ordering login"
         else
           ok "Expires in $days days (${expires%%T*})"
         fi
@@ -244,7 +259,7 @@ cmd_doctor() {
       msg="$(json_get "$body" error.message)"; [ -n "$msg" ] || msg="$(json_get "$body" result)"
       fail "MCP rejected the key (HTTP $HTTP_CODE): ${msg:-no details}"
       case "$msg" in
-        *"Invalid MCP token"*) hint "The key is wrong, expired or revoked. Create a new one in the Dashboard." ;;
+        *"Invalid MCP token"*) hint "The key is wrong, expired or revoked. Get a new one with: ./ordering login" ;;
         *"project does not exist"*) hint "Check ORDERING_PROJECT." ;;
         *"token is required"*) hint "The key did not reach the server. Check ORDERING_MCP_KEY in .env." ;;
       esac
@@ -375,6 +390,178 @@ cmd_init() {
   hint "Paste your MCP key right after ORDERING_MCP_KEY= (no spaces, no quotes) and save."
 }
 
+# ---------------------------------------------------------------- login
+#
+# Browser sign-in through docs.ordering.co (protocol: docs/login-protocol.md).
+# The terminal creates an RSA key pair; the page encrypts the new MCP key to it;
+# a relay on docs.ordering.co holds only the ciphertext until this script claims it.
+
+CONNECT_URL="${ORDERING_CONNECT_URL:-https://docs.ordering.co}"
+LOGIN_DIR="$ROOT/.login"
+LOGIN_TTL=600
+
+connect_base() {
+  case "$CONNECT_URL" in
+    https://*|http://127.0.0.1:*|http://localhost:*) echo "${CONNECT_URL%/}" ;;
+    *) die "ORDERING_CONNECT_URL must be https:// (or http://127.0.0.1 for tests)" ;;
+  esac
+}
+
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+b64url_decode() {
+  local s; s="$(tr '_-' '/+')"
+  case $(( ${#s} % 4 )) in 2) s="$s==" ;; 3) s="$s=" ;; esac
+  printf '%s' "$s" | openssl base64 -d -A
+}
+sha256_hex() { openssl dgst -sha256 | awk '{print $NF}'; }
+
+login_client() {
+  case "${1:-}" in
+    claude|claude-code) echo "Claude Code" ;;
+    codex) echo "Codex" ;;
+    "") if [ -n "${CLAUDECODE:-}" ]; then echo "Claude Code"; else echo "Terminal"; fi ;;
+    *) die "Unknown --client '$1'. Use claude, codex or leave it out." ;;
+  esac
+}
+
+cmd_login_start() {
+  local client="$1"
+  have openssl || die "openssl is required for ./ordering login. Use ./ordering init instead."
+  local base; base="$(connect_base)"
+  rm -rf "$LOGIN_DIR"; mkdir -p "$LOGIN_DIR"; chmod 700 "$LOGIN_DIR"
+
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$LOGIN_DIR/private.pem" 2>/dev/null \
+    || die "Could not create a key pair with openssl."
+  chmod 600 "$LOGIN_DIR/private.pem"
+  openssl pkey -in "$LOGIN_DIR/private.pem" -pubout -outform DER -out "$LOGIN_DIR/public.der" 2>/dev/null
+
+  local id secret deliver_token claim_hash deliver_hash public_key code host
+  id="$(openssl rand -hex 16)"
+  secret="$(openssl rand -hex 32)"
+  deliver_token="$(openssl rand -hex 16)"
+  claim_hash="$(printf '%s' "$secret" | sha256_hex)"
+  deliver_hash="$(printf '%s' "$deliver_token" | sha256_hex)"
+  public_key="$(b64url < "$LOGIN_DIR/public.der")"
+  code="$(sha256_hex < "$LOGIN_DIR/public.der" | cut -c1-12 | tr '[:lower:]' '[:upper:]')"
+  code="${code:0:4}-${code:4:4}-${code:8:4}"
+  host="$( (hostname -s 2>/dev/null || hostname) | tr -cd 'A-Za-z0-9.-' | cut -c1-64)"
+  [ -n "$host" ] || host="computer"
+
+  local body
+  body="$(printf '{"id":"%s","claim_hash":"%s","deliver_hash":"%s","public_key":"%s","client":"%s","host":"%s"}' \
+    "$id" "$claim_hash" "$deliver_hash" "$public_key" "$client" "$host")"
+  http -X POST "$base/connect/api/pairings" -H "Content-Type: application/json" --data-binary "$body"
+  [ "$HTTP_CODE" = "201" ] || die "Could not start the sign-in (HTTP $HTTP_CODE). Try again, or use ./ordering init."
+
+  printf '%s\n' "$id" > "$LOGIN_DIR/id"
+  printf '%s\n' "$secret" > "$LOGIN_DIR/secret"
+  printf '%s\n' "$code" > "$LOGIN_DIR/code"
+  printf '%s\n' "$(( $(date +%s) + LOGIN_TTL ))" > "$LOGIN_DIR/expires"
+  chmod 600 "$LOGIN_DIR"/*
+
+  local url="$base/connect/#$id.$deliver_token"
+  echo
+  printf '  %sOpen this link and sign in to Ordering.co:%s\n' "$C_B" "$C_0"
+  printf '  %s\n\n' "$url"
+  printf '  When the page asks, type this code: %s%s%s\n' "$C_B" "$code" "$C_0"
+  printf '  %sThe link works for 10 minutes. Never share the link or the code.%s\n\n' "$C_DIM" "$C_0"
+  if [ -z "${ORDERING_NO_BROWSER:-}" ] && [ -z "${SSH_CONNECTION:-}" ]; then
+    if [ "$(uname)" = "Darwin" ]; then open "$url" 2>/dev/null || true
+    elif have xdg-open && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then xdg-open "$url" >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+cmd_login_wait() {
+  local timeout="${1:-540}"
+  [ -f "$LOGIN_DIR/id" ] || die "No sign-in in progress. Run ./ordering login first."
+  local base id secret expires deadline now
+  base="$(connect_base)"
+  id="$(cat "$LOGIN_DIR/id")"; secret="$(cat "$LOGIN_DIR/secret")"; expires="$(cat "$LOGIN_DIR/expires")"
+  now="$(date +%s)"
+  deadline=$(( now + timeout )); [ "$deadline" -le "$expires" ] || deadline="$expires"
+  [ "$now" -lt "$expires" ] || { rm -rf "$LOGIN_DIR"; die "The sign-in link expired. Run ./ordering login again."; }
+
+  local body_file ciphertext=""
+  body_file="$(tmpfile)"
+  printf '{"claim_secret":"%s"}' "$secret" > "$body_file"
+  printf '  Waiting for you to finish in the browser (code %s)' "$(cat "$LOGIN_DIR/code")"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    http -X POST "$base/connect/api/pairings/$id/claim" -H "Content-Type: application/json" --data-binary "@$body_file"
+    case "$HTTP_CODE" in
+      200) ciphertext="$(json_get "$HTTP_BODY" ciphertext)"; break ;;
+      202|000) printf '.'; sleep 2 ;;
+      404) echo; rm -rf "$LOGIN_DIR"; die "The sign-in expired or was cancelled. Run ./ordering login again." ;;
+      *) echo; rm -rf "$LOGIN_DIR"; die "The sign-in failed (HTTP $HTTP_CODE). Run ./ordering login again." ;;
+    esac
+  done
+  echo
+  if [ -z "$ciphertext" ]; then
+    if [ "$(date +%s)" -ge "$expires" ]; then rm -rf "$LOGIN_DIR"; die "The sign-in link expired. Run ./ordering login again."; fi
+    die "Still waiting. Finish in the browser, then run: ./ordering login wait"
+  fi
+
+  local payload version pid project key key_name
+  payload="$(printf '%s' "$ciphertext" | b64url_decode | openssl pkeyutl -decrypt -inkey "$LOGIN_DIR/private.pem" \
+    -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 2>/dev/null)" \
+    || { rm -rf "$LOGIN_DIR"; die "Could not decrypt the key. Run ./ordering login again."; }
+  rm -rf "$LOGIN_DIR"
+  version="$(json_get "$payload" v)"; pid="$(json_get "$payload" i)"
+  project="$(json_get "$payload" p)"; key="$(json_get "$payload" k)"; payload=""
+  if [ "$version" != "1" ] || [ "$pid" != "$id" ]; then
+    die "Received a key for another sign-in. Nothing was saved. Run ./ordering login again."
+  fi
+  [[ "$project" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Received an invalid project. Run ./ordering login again."
+  [[ "$key" =~ ^ord_mcp_[A-Za-z0-9_-]+$ ]] || die "Received an invalid key. Run ./ordering login again."
+
+  # Accept the key only if it is the one created for this sign-in: its name ends with our id.
+  mcp_whoami "$project" "$key"
+  key_name="$(json_get "$MCP_BODY" result.structuredContent.token.name)"
+  if [ "$HTTP_CODE" != "200" ] || [ "${key_name: -8}" != "${id:0:8}" ]; then
+    key=""
+    die "The received key could not be verified as yours (HTTP $HTTP_CODE). Nothing was saved. If you didn't start this sign-in, revoke unknown keys in the Dashboard."
+  fi
+
+  [ -f "$ENV_FILE" ] || cp "$ROOT/.env.example" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  set_env_line ORDERING_PROJECT "$project"
+  set_env_line ORDERING_MCP_KEY "$key"
+  export ORDERING_PROJECT="$project" ORDERING_MCP_KEY="$key"
+  ok "Signed in as $(json_get "$MCP_BODY" result.structuredContent.user.name) ($(json_get "$MCP_BODY" result.structuredContent.user.role)) on project '$project'. Check that this is you and your project."
+  ok "Key \"$key_name\" saved to .env"
+  hint "To revoke it later: Dashboard > MCP settings, key \"$key_name\"."
+
+  if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
+    if printf '{"project":"%s","mcp_key":"%s"}' "$project" "$key" | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1; then
+      ok "Claude Code plugin updated (key stored in your system keychain)"
+    else
+      warn "Could not update the Claude Code plugin. Run: claude plugin configure $PLUGIN_ID"
+    fi
+  fi
+  key=""
+  if [ -n "${ORDERING_LOGIN_SKIP_DOCTOR:-}" ]; then return 0; fi
+  cmd_doctor
+}
+
+cmd_login() {
+  local sub="" client_arg="" timeout=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      start|wait) sub="$1" ;;
+      --client) client_arg="${2:-}"; shift ;;
+      --client=*) client_arg="${1#--client=}" ;;
+      --timeout) timeout="${2:-}"; shift ;;
+      *) die "Usage: ./ordering login [start|wait] [--client claude|codex]" ;;
+    esac
+    shift
+  done
+  case "$sub" in
+    start) cmd_login_start "$(login_client "$client_arg")" ;;
+    wait) cmd_login_wait "${timeout:-540}" ;;
+    "") cmd_login_start "$(login_client "$client_arg")"; cmd_login_wait "${timeout:-$LOGIN_TTL}" ;;
+  esac
+}
+
 # ---------------------------------------------------------------- install
 
 MARK_BEGIN="# >>> ordering.co mcp >>>"
@@ -395,6 +582,46 @@ remove_profile_block() {
   tmp="$(tmpfile)"
   awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0 == b {skip=1; next} $0 == e {skip=0; next} !skip' "$f" > "$tmp"
   cat "$tmp" > "$f"
+}
+
+# The official Claude Code plugin: the MCP server plus a skill that knows the platform.
+# The key goes to the system keychain through stdin, never through arguments.
+PLUGIN_REPO="Finitless-com/ordering-mcp-plugin"
+PLUGIN_MARKETPLACE="ordering-dev"
+PLUGIN_ID="ordering@$PLUGIN_MARKETPLACE"
+
+# Prints: installed | available | conflict | unknown
+claude_plugin_state() {
+  local markets plugins repo
+  have jq || { echo unknown; return; }
+  markets="$(claude plugin marketplace list --json 2>/dev/null || true)"
+  plugins="$(claude plugin list --json 2>/dev/null || true)"
+  repo="$(printf '%s' "$markets" | jq -r --arg m "$PLUGIN_MARKETPLACE" '.[]? | select(.name == $m) | .repo // .url // .source' 2>/dev/null | head -1)"
+  if [ -z "$repo" ]; then echo available
+  elif [ "$repo" != "$PLUGIN_REPO" ]; then echo conflict
+  elif printf '%s' "$plugins" | jq -e --arg id "$PLUGIN_ID" '.[]? | select(.id == $id)' >/dev/null 2>&1; then echo installed
+  else echo available
+  fi
+}
+
+install_claude_plugin() {
+  [ -z "${ORDERING_NO_PLUGIN:-}" ] || return 1
+  case "$(claude_plugin_state)" in
+    available)
+      claude plugin marketplace add "$PLUGIN_REPO" >/dev/null 2>&1 || return 1
+      claude plugin install "$PLUGIN_ID" --config "project=$ORDERING_PROJECT" >/dev/null 2>&1 || return 1
+      ;;
+    installed) ;;
+    conflict)
+      hint "Claude Code already has another marketplace named '$PLUGIN_MARKETPLACE', so the Ordering plugin can't be added. Using a plain MCP server instead."
+      return 1 ;;
+    *) return 1 ;;
+  esac
+  printf '{"project":"%s","mcp_key":"%s"}' "$ORDERING_PROJECT" "$ORDERING_MCP_KEY" \
+    | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1 || return 1
+  # The plugin brings its own server; drop a plain one from an earlier install.
+  claude mcp remove ordering -s user >/dev/null 2>&1 || true
+  ok "Claude Code: Ordering plugin installed (MCP server + Ordering skill, key in your system keychain)"
 }
 
 # Prints the MCP variables from .env as shell exports, for your shell profile.
@@ -429,7 +656,9 @@ cmd_install() {
 
   title "Agents"
   local any=""
-  if have claude; then
+  if have claude && install_claude_plugin; then
+    any=1
+  elif have claude; then
     claude mcp remove ordering -s user >/dev/null 2>&1 || true
     # The single quotes are intended: Claude Code expands ${ORDERING_MCP_KEY} when it connects.
     # shellcheck disable=SC2016
@@ -526,7 +755,7 @@ cmd_spec() {
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
@@ -534,6 +763,7 @@ usage() {
 load_env
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
 case "$cmd" in
+  login)         cmd_login "$@" ;;
   init)          cmd_init "$@" ;;
   doctor)        cmd_doctor ;;
   install)       cmd_install ;;

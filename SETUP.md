@@ -4,20 +4,18 @@ A developer asked you to connect them to the Ordering.co MCP. Follow these steps
 
 ## Rules
 
-- **Never ask for the MCP key in the chat, and never print or read `.env`.** The developer pastes the key into `.env` themselves. If they paste a key in the chat anyway, tell them to delete that key in the Dashboard and create a new one, because the transcript now contains it.
-- The Server URL and the project ID are **not** secret. You may ask for them in the chat.
+- **Never ask for the MCP key in the chat, and never print or read `.env`.** The key reaches the terminal encrypted, through `./ordering login`. If the developer pastes a key in the chat anyway, tell them to revoke it in the Dashboard and run the login again, because the transcript now contains it.
+- The sign-in link and the code are for the developer only. Show them once and never post them anywhere else.
 - Use `./ordering` for every change to `.env`. Never edit `.env` with your own tools.
-- Never commit `.env`.
+- Never commit `.env` or `.login/`.
 
 ## 0. Check where you are running
 
 - **Native Windows (PowerShell or cmd):** stop. Tell them to run their agent inside WSL or Git Bash and paste the prompt again.
-- **A cloud or remote session** (not the developer's own computer): stop. Setup must run on the machine where they use Claude Code or Codex.
-- **Codex:** steps 4 and 5 need network access and write access outside the workspace (`~/.zshrc`, `~/.codex/config.toml`). Ask for both before step 4.
+- **Codex:** this setup needs network access, plus write access outside the workspace (`~/.zshrc`, `~/.codex/config.toml`). Ask for both before step 2.
+- **A remote or cloud session works too.** The developer opens the link on any computer where they can sign in.
 
 ## 1. Get the repo
-
-Use `~/ordering-dev-quickstart`:
 
 ```bash
 if [ -d ~/ordering-dev-quickstart/.git ]; then
@@ -31,49 +29,55 @@ If `~/ordering-dev-quickstart` exists but isn't a git repo, or the clone fails, 
 
 Your shell's working folder may reset between commands. **Start every command with `cd ~/ordering-dev-quickstart &&`.**
 
-## 2. Ask for the Server URL
+## 2. Sign in
 
-Send this, adapted to their language:
-
-> 1. Open your MCP settings: https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens
-> 2. Copy the **Server URL** and paste it here. It isn't secret.
-> 3. On the same page, create a key: accept the data notice and choose **Read**. Keep the tab open, because the key is shown only once. Don't paste the key here.
->
-> Can't open Settings? Only administrators can. Ask your project administrator.
-
-## 3. Create `.env` and have them paste the key
-
-Before you run this, tell them you're about to open a file for their key. Then run:
+Use `--client claude` if you are Claude Code, or `--client codex` if you are Codex.
 
 ```bash
-cd ~/ordering-dev-quickstart && ./ordering init "<the Server URL they pasted>"
+cd ~/ordering-dev-quickstart && ./ordering login start --client claude
 ```
 
-`init` creates `.env`, sets the project from the URL, and opens the file in their text editor when it can. If it rejects the input, show its message and ask again.
+It prints a link and a code, and opens the browser when it can. Send both to the developer, adapted to their language:
 
-Then tell them:
+> Open this link and sign in to Ordering.co with your Dashboard or Billing account: **<link>**
+> When the page asks, type this code: **<code>**
+> Read the data notice, keep **Read** access unless you need changes, and click Connect.
 
-> I opened a file called `.env`. Paste your key right after `ORDERING_MCP_KEY=`, with no spaces or quotes. Save it and tell me when you're done.
-
-If `init` couldn't open the file, give them the path it printed and the `nano` command.
-
-## 4. Check the connection
+Then wait for them:
 
 ```bash
-cd ~/ordering-dev-quickstart && ./ordering doctor
+cd ~/ordering-dev-quickstart && ./ordering login wait
 ```
 
-Continue only if the MCP section shows **`✔ Connected as …`** and there are no `✘` lines.
+- **`Signed in. Key "…" saved`:** go to step 3. `wait` already ran `doctor`, so read its output.
+- **`Still waiting`:** they haven't finished yet. Run `login wait` again. The link lasts 10 minutes.
+- **`expired`, `cancelled` or `failed`:** run `login start` again.
+- **`could not be verified`:** someone else's key arrived. Nothing was saved. Tell the developer to revoke unknown keys in the Dashboard (MCP settings), then run `login start` again.
+- **`Could not start the sign-in`:** the sign-in service isn't available. Use the manual path below.
 
-- **`✘` lines:** explain each one in one sentence with its fix from `docs/troubleshooting.md`. Run `doctor` again after they fix it.
-- **`No keys yet` or `ORDERING_MCP_KEY is empty`:** the file wasn't saved, or the key is on the wrong line.
-- **`Scope: write`:** it works, but recommend a read key for everyday use.
-- **Any other `⚠`:** look it up in `docs/troubleshooting.md`.
+**On the page, the developer may see:**
+- *"MCP isn't available for this project"* or *"you need administrator or business manager access"*: they need their project administrator.
+- *"This notice is being updated"*: they should try again later or use the manual path.
 
-## 5. Install it for every folder
+### Manual path (only if login isn't available)
+
+1. Ask for the **Server URL** from https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens. It isn't secret.
+2. Run `cd ~/ordering-dev-quickstart && ./ordering init "<Server URL>"`. It opens `.env`.
+3. Tell them to create a **Read** key on that page and paste it right after `ORDERING_MCP_KEY=`, then save.
+4. Run `./ordering doctor`.
+
+## 3. Check the connection
+
+Continue only if `doctor` shows **`✔ Connected as …`** in the MCP section and there are no `✘` lines.
+
+- **`✘` lines:** explain each one in one sentence with its fix from `docs/troubleshooting.md`.
+- **`Scope: write`:** it works, but recommend Read for everyday use.
+
+## 4. Install it for every folder
 
 First tell them that this step will:
-- add the `ordering` server to Claude Code and Codex for all their folders;
+- in Claude Code, install the official Ordering plugin (the MCP server plus a skill that knows the platform), with the key stored in the system keychain;
+- in Codex, add the `ordering` server for all their folders;
 - add a small marked block to their shell startup file (for example `~/.zshrc`), so new terminals load the key from `.env`;
 - be fully reversible with `./ordering uninstall`.
 
@@ -85,7 +89,7 @@ cd ~/ordering-dev-quickstart && ./ordering install
 
 If it prints `✘` or an unknown-shell warning, show them the manual command it printed.
 
-## 6. Finish
+## 5. Finish
 
 Tell them, briefly and in their language:
 
@@ -94,9 +98,9 @@ Tell them, briefly and in their language:
 > 2. Start `claude` or `codex`.
 > 3. Ask: **"Who am I in Ordering?"**
 >
-> Your key expires in <N> days. When it does, create a new key on the same page, paste it into `~/ordering-dev-quickstart/.env`, and open a new terminal. If anything fails, run `~/ordering-dev-quickstart/ordering doctor`.
+> Your key expires in <N> days. To renew it, run `~/ordering-dev-quickstart/ordering login`, sign in again and open a new terminal.
 
-Take `<N>` from the `doctor` output. If `doctor` printed no expiry, say "keys expire after 7 days by default".
+Take `<N>` from the `doctor` output.
 
 Add only if it applies:
 - **They use the desktop app** (started from the Dock or Start menu): it doesn't see the key. Start it from a terminal, or see `docs/manual-setup.md`.
