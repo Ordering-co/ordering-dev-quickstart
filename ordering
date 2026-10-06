@@ -508,7 +508,9 @@ cmd_login_wait() {
   rm -rf "$LOGIN_DIR"
   version="$(json_get "$payload" v)"; pid="$(json_get "$payload" i)"
   project="$(json_get "$payload" p)"; key="$(json_get "$payload" k)"; payload=""
-  [ "$version" = "1" ] && [ "$pid" = "$id" ] || die "Received a key for another sign-in. Nothing was saved. Run ./ordering login again."
+  if [ "$version" != "1" ] || [ "$pid" != "$id" ]; then
+    die "Received a key for another sign-in. Nothing was saved. Run ./ordering login again."
+  fi
   [[ "$project" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Received an invalid project. Run ./ordering login again."
   [[ "$key" =~ ^ord_mcp_[A-Za-z0-9_-]+$ ]] || die "Received an invalid key. Run ./ordering login again."
 
