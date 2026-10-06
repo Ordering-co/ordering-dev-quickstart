@@ -69,6 +69,22 @@ Cursor reads the key from its environment. If Cursor was already open, it keeps 
 
 Apps started from the Dock or Start menu don't read your shell startup file, so they don't see `ORDERING_MCP_KEY`. Start them from a terminal, or set the key in the app's own MCP settings.
 
+## Disconnect or reset
+
+```bash
+./ordering logout      # alias: disconnect
+```
+
+Removes the `ordering` server from Claude Code and Codex, removes the shell block added by `install`, and clears `ORDERING_MCP_KEY` from `.env` (your project ID stays). It prints the key's name and a link to the Dashboard's MCP settings, where you can revoke it. **The key keeps working until you revoke it there**: `logout` only stops using it here.
+
+`./ordering uninstall` does the same to Claude Code, Codex and your shell, but leaves `.env` and your key alone.
+
+To sign in again right after, with a new key or after revoking the old one:
+
+```bash
+./ordering reset --client claude   # logout, then the same sign-in as ./ordering login
+```
+
 ## Keep your fork up to date
 
 ```bash
