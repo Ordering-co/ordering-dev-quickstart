@@ -531,11 +531,11 @@ cmd_login_wait() {
   ok "Key \"$key_name\" saved to .env"
   hint "To revoke it later: Dashboard > MCP settings, key \"$key_name\"."
 
-  if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q 'ordering@ordering'; then
-    if printf '{"project":"%s","mcp_key":"%s"}' "$project" "$key" | claude plugin configure ordering@ordering --values-stdin >/dev/null 2>&1; then
+  if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
+    if printf '{"project":"%s","mcp_key":"%s"}' "$project" "$key" | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1; then
       ok "Claude Code plugin updated (key stored in your system keychain)"
     else
-      warn "Could not update the Claude Code plugin. Run: claude plugin configure ordering@ordering"
+      warn "Could not update the Claude Code plugin. Run: claude plugin configure $PLUGIN_ID"
     fi
   fi
   key=""
@@ -587,7 +587,8 @@ remove_profile_block() {
 # The official Claude Code plugin: the MCP server plus a skill that knows the platform.
 # The key goes to the system keychain through stdin, never through arguments.
 PLUGIN_REPO="Finitless-com/ordering-mcp-plugin"
-PLUGIN_ID="ordering@ordering"
+PLUGIN_MARKETPLACE="ordering-dev"
+PLUGIN_ID="ordering@$PLUGIN_MARKETPLACE"
 
 # Prints: installed | available | conflict | unknown
 claude_plugin_state() {
@@ -595,7 +596,7 @@ claude_plugin_state() {
   have jq || { echo unknown; return; }
   markets="$(claude plugin marketplace list --json 2>/dev/null || true)"
   plugins="$(claude plugin list --json 2>/dev/null || true)"
-  repo="$(printf '%s' "$markets" | jq -r '.[]? | select(.name == "ordering") | .repo // .url // .source' 2>/dev/null | head -1)"
+  repo="$(printf '%s' "$markets" | jq -r --arg m "$PLUGIN_MARKETPLACE" '.[]? | select(.name == $m) | .repo // .url // .source' 2>/dev/null | head -1)"
   if [ -z "$repo" ]; then echo available
   elif [ "$repo" != "$PLUGIN_REPO" ]; then echo conflict
   elif printf '%s' "$plugins" | jq -e --arg id "$PLUGIN_ID" '.[]? | select(.id == $id)' >/dev/null 2>&1; then echo installed
@@ -612,7 +613,7 @@ install_claude_plugin() {
       ;;
     installed) ;;
     conflict)
-      hint "Claude Code already has another marketplace named 'ordering', so the Ordering plugin can't be added. Using a plain MCP server instead."
+      hint "Claude Code already has another marketplace named '$PLUGIN_MARKETPLACE', so the Ordering plugin can't be added. Using a plain MCP server instead."
       return 1 ;;
     *) return 1 ;;
   esac

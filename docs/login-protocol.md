@@ -104,7 +104,7 @@ Then the terminal:
 1. Decrypts with `openssl pkeyutl -decrypt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256`.
 2. Requires `v == 1`, `i == id`, a valid project and a key starting with `ord_mcp_`.
 3. Calls the MCP `whoami` tool. **It accepts the key only if `token.name` ends with the first 8 chars of `id`.** This refuses a key that someone else delivered.
-4. Writes `.env` under `umask 077`. If the Claude Code plugin is installed, it also runs `claude plugin configure ordering@ordering --values-stdin`.
+4. Writes `.env` under `umask 077`. If the Claude Code plugin is installed, it also runs `claude plugin configure ordering@ordering-dev --values-stdin`.
 5. Prints the key's name, so the person can revoke it, and deletes `.login/`.
 
 ## Relay rules
