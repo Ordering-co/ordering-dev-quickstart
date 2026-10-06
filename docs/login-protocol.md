@@ -126,6 +126,8 @@ Then the terminal:
 | Whoever operates docs.ordering.co | Serves the page's JavaScript, so it could read keys in the browser | Same trust as the Dashboard itself |
 | Brute force on the code | 48 bits, a fixed exponent, and 3 attempts | |
 | Abuse as storage | Strict sizes and shapes, 10-minute TTL, rate limit | |
+| Someone with the **full link** (id and deliver token) delivers a key from their own project, named with this pairing's suffix | The link only exists in the person's terminal, browser and agent transcript. `login` prints the user and project it connected to, so a foreign project stands out | Low: requires the full link within its 10 minutes |
+| Code attempts are counted per page load | 48-bit code: brute force isn't practical | Reopening the link gives 3 new attempts (friction against phishing only) |
 | A lost claim response | The key name is printed. Revoke it in the Dashboard and run `login` again | An orphan key until it expires |
 | XSS elsewhere on docs.ordering.co | `/connect` is a standalone page with `script-src 'self'`, no inline script, `frame-ancestors 'none'` and `Referrer-Policy: no-referrer`. A separate subdomain is the long-term fix | The bridges trust the whole origin |
 

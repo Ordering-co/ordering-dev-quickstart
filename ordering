@@ -527,7 +527,8 @@ cmd_login_wait() {
   set_env_line ORDERING_PROJECT "$project"
   set_env_line ORDERING_MCP_KEY "$key"
   export ORDERING_PROJECT="$project" ORDERING_MCP_KEY="$key"
-  ok "Signed in. Key \"$key_name\" for '$project' saved to .env"
+  ok "Signed in as $(json_get "$MCP_BODY" result.structuredContent.user.name) ($(json_get "$MCP_BODY" result.structuredContent.user.role)) on project '$project'. Check that this is you and your project."
+  ok "Key \"$key_name\" saved to .env"
   hint "To revoke it later: Dashboard > MCP settings, key \"$key_name\"."
 
   if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q 'ordering@ordering'; then
