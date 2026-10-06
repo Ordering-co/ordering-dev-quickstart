@@ -17,6 +17,7 @@ export ORDERING_CONNECT_URL="$BASE" ORDERING_API_HOST="$BASE" ORDERING_NO_BROWSE
 unset ORDERING_PROJECT ORDERING_MCP_KEY ORDERING_API_KEY
 
 pass=0; failn=0
+perms() { python3 -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$1"; }
 check() { if eval "$2"; then echo "ok   - $1"; pass=$((pass+1)); else echo "FAIL - $1"; failn=$((failn+1)); fi; }
 
 fresh() {  # a clean copy of the repo, without .env or .login
@@ -28,20 +29,20 @@ start() {  # sets LINK and CODE
   LINK="$(grep -o 'http://[^ ]*/connect/#[0-9a-f.]*' "$WORK/start.out")"
   CODE="$(sed -n 's/.*type this code: \([0-9A-F-]*\).*/\1/p' "$WORK/start.out" | tr -d '\033' | sed 's/\[[0-9;]*m//g')"
 }
-KEY="ord_mcp_TestKey0123456789abcdefghijklmnopqrstu"
+KEY="ord_mcp_test$(openssl rand -hex 18)"   # generated, so no key-shaped literal is committed
 
 echo "# happy path"
 fresh; start
 check "start prints a link with id.deliver_token in the fragment" '[[ "$LINK" =~ /connect/#[0-9a-f]{32}\.[0-9a-f]{32}$ ]]'
 check "start prints a 12-hex verification code" '[[ "$CODE" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]]'
-check "private key is 0600" '[ "$(stat -f %Lp "$WORK/repo/.login/private.pem" 2>/dev/null || stat -c %a "$WORK/repo/.login/private.pem")" = "600" ]'
+check "private key is 0600" '[ "$(perms "$WORK/repo/.login/private.pem")" = "600" ]'
 node "$REPO/tests/page_sim.mjs" "$BASE" "$LINK" "$CODE" orderingtest "$KEY" > "$WORK/page.out"
 check "page delivers (204)" 'grep -q "\"deliver\":204" "$WORK/page.out"'
 "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/wait.out" 2>&1; rc=$?
 check "wait succeeds" '[ "$rc" = 0 ]'
 check ".env has the project" 'grep -qx "ORDERING_PROJECT=orderingtest" "$WORK/repo/.env"'
 check ".env has the key" 'grep -qx "ORDERING_MCP_KEY=$KEY" "$WORK/repo/.env"'
-check ".env is 0600" '[ "$(stat -f %Lp "$WORK/repo/.env" 2>/dev/null || stat -c %a "$WORK/repo/.env")" = "600" ]'
+check ".env is 0600" '[ "$(perms "$WORK/repo/.env")" = "600" ]'
 check ".login/ is removed" '[ ! -e "$WORK/repo/.login" ]'
 check "the key is never printed" '! grep -q "$KEY" "$WORK/start.out" "$WORK/wait.out"'
 check "the key name is printed for revocation" 'grep -q "Claude Code · " "$WORK/wait.out"'
