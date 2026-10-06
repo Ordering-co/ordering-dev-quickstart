@@ -76,7 +76,8 @@ Continue only if `doctor` shows **`✔ Connected as …`** in the MCP section an
 ## 4. Install it for every folder
 
 First tell them that this step will:
-- add the `ordering` server to Claude Code and Codex for all their folders;
+- in Claude Code, install the official Ordering plugin (the MCP server plus a skill that knows the platform), with the key stored in the system keychain;
+- in Codex, add the `ordering` server for all their folders;
 - add a small marked block to their shell startup file (for example `~/.zshrc`), so new terminals load the key from `.env`;
 - be fully reversible with `./ordering uninstall`.
 

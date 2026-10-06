@@ -26,7 +26,7 @@ If you get `Permission denied`, run `chmod +x ordering` or use `bash ordering do
 
 ### What `install` changes
 
-- **Claude Code:** adds a user-level `ordering` server whose header reads `Bearer ${ORDERING_MCP_KEY}`, so the key itself is never stored in Claude's config.
+- **Claude Code:** installs the official [Ordering plugin](https://github.com/Finitless-com/ordering-mcp-plugin): the MCP server plus a skill that knows the platform. The key goes to your system keychain through stdin. If the plugin can't be installed (for example, another marketplace called `ordering` already exists), it adds a user-level `ordering` server instead, whose header reads `Bearer ${ORDERING_MCP_KEY}`. Set `ORDERING_NO_PLUGIN=1` to skip the plugin.
 - **Codex:** adds an `ordering` server with `bearer_token_env_var = "ORDERING_MCP_KEY"`.
 - **Your shell:** adds a marked block to `~/.zshrc`, `~/.bash_profile` or `~/.bashrc`, so new terminals load `ORDERING_PROJECT` and `ORDERING_MCP_KEY` from this repo's `.env`. Your REST API key is never loaded this way.
 

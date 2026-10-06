@@ -581,6 +581,45 @@ remove_profile_block() {
   cat "$tmp" > "$f"
 }
 
+# The official Claude Code plugin: the MCP server plus a skill that knows the platform.
+# The key goes to the system keychain through stdin, never through arguments.
+PLUGIN_REPO="Finitless-com/ordering-mcp-plugin"
+PLUGIN_ID="ordering@ordering"
+
+# Prints: installed | available | conflict | unknown
+claude_plugin_state() {
+  local markets plugins repo
+  have jq || { echo unknown; return; }
+  markets="$(claude plugin marketplace list --json 2>/dev/null || true)"
+  plugins="$(claude plugin list --json 2>/dev/null || true)"
+  repo="$(printf '%s' "$markets" | jq -r '.[]? | select(.name == "ordering") | .repo // .url // .source' 2>/dev/null | head -1)"
+  if [ -z "$repo" ]; then echo available
+  elif [ "$repo" != "$PLUGIN_REPO" ]; then echo conflict
+  elif printf '%s' "$plugins" | jq -e --arg id "$PLUGIN_ID" '.[]? | select(.id == $id)' >/dev/null 2>&1; then echo installed
+  else echo available
+  fi
+}
+
+install_claude_plugin() {
+  [ -z "${ORDERING_NO_PLUGIN:-}" ] || return 1
+  case "$(claude_plugin_state)" in
+    available)
+      claude plugin marketplace add "$PLUGIN_REPO" >/dev/null 2>&1 || return 1
+      claude plugin install "$PLUGIN_ID" --config "project=$ORDERING_PROJECT" >/dev/null 2>&1 || return 1
+      ;;
+    installed) ;;
+    conflict)
+      hint "Claude Code already has another marketplace named 'ordering', so the Ordering plugin can't be added. Using a plain MCP server instead."
+      return 1 ;;
+    *) return 1 ;;
+  esac
+  printf '{"project":"%s","mcp_key":"%s"}' "$ORDERING_PROJECT" "$ORDERING_MCP_KEY" \
+    | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1 || return 1
+  # The plugin brings its own server; drop a plain one from an earlier install.
+  claude mcp remove ordering -s user >/dev/null 2>&1 || true
+  ok "Claude Code: Ordering plugin installed (MCP server + Ordering skill, key in your system keychain)"
+}
+
 # Prints the MCP variables from .env as shell exports, for your shell profile.
 # The REST API key is never exported this way.
 cmd_shell_env() {
@@ -613,7 +652,9 @@ cmd_install() {
 
   title "Agents"
   local any=""
-  if have claude; then
+  if have claude && install_claude_plugin; then
+    any=1
+  elif have claude; then
     claude mcp remove ordering -s user >/dev/null 2>&1 || true
     # The single quotes are intended: Claude Code expands ${ORDERING_MCP_KEY} when it connects.
     # shellcheck disable=SC2016
