@@ -120,3 +120,21 @@ Add only if it applies:
 - **They use the desktop app** (started from the Dock or Start menu): it doesn't see the key. Start it from a terminal, or see `docs/manual-setup.md`.
 - **Cursor or VS Code:** `docs/manual-setup.md`.
 - **They want to call the REST API from code:** `docs/rest-api.md`.
+
+## Disconnect or reset (only if the developer asks)
+
+If they ask to disconnect, log out, start over, or say their key stopped working:
+
+```bash
+cd ~/ordering-dev-quickstart && ./ordering logout
+```
+
+This removes the `ordering` server from Claude Code and Codex, removes the shell block, and clears `ORDERING_MCP_KEY` from `.env` (their project stays set). It prints the key's name and a Dashboard link. **The key still works until they revoke it there**, so tell them to revoke it if they're disconnecting because of a leak, a lost device, or offboarding.
+
+To connect again right after (a new key, or after revoking the old one):
+
+```bash
+cd ~/ordering-dev-quickstart && ./ordering reset --client claude
+```
+
+`reset` runs `logout` and then the same sign-in as step 2: expect another `TELL THE USER` block, and follow it the same way.

@@ -7,7 +7,10 @@
 #   ./ordering init [SERVER_URL] Create .env, set your project from the Server URL, open the file
 #   ./ordering doctor            Check your project, MCP key and API key
 #   ./ordering install           Make the Ordering MCP available in Claude Code and Codex everywhere
-#   ./ordering uninstall         Undo install
+#   ./ordering uninstall         Undo install (your key in .env is left alone)
+#   ./ordering logout            Disconnect here: remove the key from .env, Claude Code and Codex
+#                                (alias: disconnect; the key still works until you revoke it)
+#   ./ordering reset             logout, then sign in again (same flags as login)
 #   ./ordering claude [args]     Start Claude Code with your .env loaded
 #   ./ordering codex [args]      Start Codex with the Ordering MCP configured
 #   ./ordering cursor | code     Open this folder in Cursor or VS Code with your .env loaded
@@ -734,7 +737,9 @@ cmd_install() {
   printf '%sDone.%s Open a NEW terminal, start claude or codex, and ask: "Who am I in Ordering?"\n' "$C_OK" "$C_0"
 }
 
-cmd_uninstall() {
+# Removes the shell integration and the 'ordering' server from Claude Code and
+# Codex. Shared by uninstall (keeps .env) and logout (also clears the key).
+remove_mcp_registrations() {
   local profile; profile="$(shell_profile)"
   if [ -n "$profile" ]; then
     remove_profile_block "$profile"
@@ -746,7 +751,75 @@ cmd_uninstall() {
   if have codex && codex mcp remove ordering >/dev/null 2>&1; then
     ok "Codex: 'ordering' removed"
   fi
+}
+
+cmd_uninstall() {
+  remove_mcp_registrations
   ok "Your .env and your keys were not touched. Delete keys you no longer use in the Dashboard."
+}
+
+# True if this Claude Code CLI's 'plugin' subcommand has an 'uninstall' action.
+# Older CLIs don't, so the plugin has to be removed from Settings > Plugins instead.
+claude_plugin_can_uninstall() {
+  have claude || return 1
+  claude plugin --help 2>/dev/null | grep -q 'uninstall'
+}
+
+DASHBOARD_MCP_URL="https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens"
+
+# Disconnects this folder: removes the key from .env (keeps the project), removes the
+# Claude Code plugin or server and the Codex server, and removes the shell integration.
+# The key itself is never printed, and nothing here revokes it on the server: that's
+# the developer's call, from the Dashboard link this prints.
+cmd_logout() {
+  local key_name=""
+  if [ -n "${ORDERING_PROJECT:-}" ] && [ -n "${ORDERING_MCP_KEY:-}" ]; then
+    if mcp_whoami "$ORDERING_PROJECT" "$ORDERING_MCP_KEY" && [ "$HTTP_CODE" = "200" ]; then
+      key_name="$(json_get "$MCP_BODY" result.structuredContent.token.name)"
+    fi
+  fi
+
+  title "Shell and agents"
+  remove_mcp_registrations
+  if have claude && [ "$(claude_plugin_state)" = "installed" ]; then
+    if claude_plugin_can_uninstall; then
+      if claude plugin uninstall "$PLUGIN_ID" >/dev/null 2>&1; then
+        ok "Claude Code: Ordering plugin uninstalled"
+      else
+        warn "Could not uninstall the Claude Code plugin. Run: claude plugin uninstall $PLUGIN_ID"
+      fi
+    else
+      warn "This Claude Code can't uninstall plugins from the CLI."
+      hint "Remove it yourself: claude plugin uninstall $PLUGIN_ID (or Settings > Plugins)"
+    fi
+  fi
+
+  title "Key"
+  if [ -f "$ENV_FILE" ]; then
+    set_env_line ORDERING_MCP_KEY ""
+    ok "Removed the MCP key from .env (your project stays set)"
+  else
+    ok "No .env here."
+  fi
+
+  echo
+  if [ -n "$key_name" ]; then
+    printf '  Key "%s%s%s" is no longer used here.\n' "$C_B" "$key_name" "$C_0"
+  else
+    printf '  No MCP key was in use here.\n'
+  fi
+  printf '  %sThis key still works until you revoke it.%s\n' "$C_WARN" "$C_0"
+  printf '  %s\n\n' "$DASHBOARD_MCP_URL"
+  if ! is_agent_session && [ -z "${ORDERING_NO_BROWSER:-}" ] && [ -z "${SSH_CONNECTION:-}" ]; then
+    if [ "$(uname)" = "Darwin" ]; then open "$DASHBOARD_MCP_URL" 2>/dev/null || true
+    elif have xdg-open && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then xdg-open "$DASHBOARD_MCP_URL" >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+cmd_reset() {
+  cmd_logout
+  cmd_login "$@"
 }
 
 # ---------------------------------------------------------------- api
@@ -806,7 +879,7 @@ cmd_spec() {
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
@@ -819,6 +892,8 @@ case "$cmd" in
   doctor)        cmd_doctor ;;
   install)       cmd_install ;;
   uninstall)     cmd_uninstall ;;
+  logout|disconnect) cmd_logout ;;
+  reset)         cmd_reset "$@" ;;
   shell-env)     cmd_shell_env ;;
   claude)        cmd_claude "$@" ;;
   codex)         cmd_codex "$@" ;;
