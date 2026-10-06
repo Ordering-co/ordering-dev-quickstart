@@ -82,26 +82,17 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return p
 
-    def deliver_token_ok(self, p):
-        token = self.headers.get("X-Deliver-Token") or ""
+    @staticmethod
+    def deliver_token_ok(p, token):
+        token = str(token or "")
         return bool(HEX32.match(token)) and same(hashlib.sha256(token.encode()).hexdigest(), p["deliver_hash"])
 
     def route(self):
-        m = re.match(r"^/connect/api/pairings(?:/([0-9a-f]{32})(?:/(deliver|claim))?)?$", self.path)
+        m = re.match(r"^/connect/api/pairings(?:/([0-9a-f]{32})(?:/(read|deliver|claim))?)?$", self.path)
         return (m.group(1), m.group(2) or "") if m else (None, None)
 
     def do_GET(self):
-        pid, action = self.route()
-        if not pid or action:
-            return self.send(404, {"error": "not_found"})
-        p = self.pairing(pid)
-        if not p:
-            return self.send(404, {"error": "not_found"})
-        if not self.deliver_token_ok(p):
-            return self.send(403, {"error": "forbidden"})
-        self.send(200, {"public_key": p["public_key"], "client": p["client"], "host": p["host"],
-                        "created_at": iso(p["created"]), "expires_at": iso(p["expires"]),
-                        "state": "delivered" if p["ciphertext"] else "waiting", "same_country": True})
+        self.send(405, {"error": "method_not_allowed"})
 
     def do_POST(self):
         if self.path == "/__test/keys":
@@ -138,10 +129,19 @@ class Handler(BaseHTTPRequestHandler):
         p = self.pairing(pid)
         if not p:
             return self.send(404, {"error": "not_found"})
-        if action == "deliver":
-            if not self.deliver_token_ok(p):
+        if action == "read":
+            body = self.read_json(["deliver_token"])
+            if not body:
+                return self.send(400, {"error": "invalid"})
+            if not self.deliver_token_ok(p, body["deliver_token"]):
                 return self.send(403, {"error": "forbidden"})
-            body = self.read_json(["ciphertext"])
+            return self.send(200, {"public_key": p["public_key"], "client": p["client"], "host": p["host"],
+                                   "created_at": iso(p["created"]), "expires_at": iso(p["expires"]),
+                                   "state": "delivered" if p["ciphertext"] else "waiting", "same_country": True})
+        if action == "deliver":
+            body = self.read_json(["ciphertext", "deliver_token"])
+            if body and not self.deliver_token_ok(p, body["deliver_token"]):
+                return self.send(403, {"error": "forbidden"})
             ct = str(body["ciphertext"]) if body else ""
             if not B64URL.match(ct) or len(b64url_decode(ct)) != 256:
                 return self.send(400, {"error": "invalid"})

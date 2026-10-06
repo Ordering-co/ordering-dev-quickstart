@@ -1,4 +1,4 @@
-# `./ordering login` protocol (v2)
+# `./ordering login` protocol (v2.1)
 
 How the terminal gets an Ordering.co MCP key from a browser sign-in without the key being copied, pasted or seen by anyone in between. This file is the contract between `./ordering`, the relay on `docs.ordering.co` and the `/connect` page. `tests/relay_mock.py` and `tests/page_sim.mjs` implement it for tests.
 
@@ -49,9 +49,13 @@ Both values are in the fragment, so they never reach server logs or `Referer`.
 ## 3. Read the pairing (page → relay)
 
 ```http
-GET /connect/api/pairings/<id>
-X-Deliver-Token: <deliver_token>
+POST /connect/api/pairings/<id>/read
+Content-Type: application/json
+
+{"deliver_token":"<32 hex>"}
 ```
+
+The deliver token only ever travels in request bodies: Cloudflare request logs can capture headers and URLs, never bodies. `GET` on a pairing answers 405.
 
 - **200** `{"public_key","client","host","created_at","expires_at","state":"waiting|delivered","same_country":true|false}`.
 - **404** unknown or expired. **403** wrong deliver token (compared in constant time).
@@ -77,7 +81,7 @@ X-Deliver-Token: <deliver_token>
 7. The person **types the code from their terminal**. The page compares it with its own computation from the public key. After 3 wrong attempts the page stops.
 8. `POST {core}/{project}/users/{user_id}/mcp_tokens`. Body: `{name, scope, expires_in_days, data_notice_version, data_notice_language}`, where `name = "<client> · <host> · <YYYY-MM-DD> · <first 8 chars of id>"`.
 9. Encrypt `{"v":1,"i":<id>,"p":<project>,"k":<key>}` with RSA-OAEP (SHA-256, MGF1 SHA-256). This gives 256 bytes.
-10. `POST /connect/api/pairings/<id>/deliver`, body `{"ciphertext":"<base64url of 256 bytes>"}`, header `X-Deliver-Token`.
+10. `POST /connect/api/pairings/<id>/deliver`, body `{"ciphertext":"<base64url of 256 bytes>","deliver_token":"<32 hex>"}`.
     - **204** delivered.
     - **400** if the ciphertext isn't exactly 256 bytes. **403** for a wrong token. **404** if expired. **409** if already delivered.
 11. Clear the key and the session from memory, and show *"Done. Go back to your terminal."*
