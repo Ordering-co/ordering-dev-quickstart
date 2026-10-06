@@ -11,3 +11,6 @@ spec/
 Thumbs.db
 *.swp
 .idea/
+
+# ./ordering login state (temporary private key and claim secret)
+.login/

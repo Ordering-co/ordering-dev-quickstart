@@ -2,6 +2,8 @@
 
 The [README](../README.md) prompt does all of this for you. Use this page to set things up by hand, or to connect Cursor or VS Code.
 
+**Fastest by hand:** `./ordering login` signs you in through your browser and saves the key, with no copy-paste. Then run `./ordering install`. The steps below are for creating the key yourself.
+
 ## What you need
 
 - **Your project ID.** Open the [Dashboard MCP settings](https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens) and copy the **Server URL**: `https://api.ordering.co/mcp/<project ID>`.

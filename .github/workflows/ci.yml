@@ -49,6 +49,17 @@ jobs:
           ./ordering spec
           ./ordering doctor || test $? -eq 1
 
+  login:
+    # ./ordering login end to end against the reference relay (tests/relay_mock.py)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Login protocol tests
+        run: bash tests/login.test.sh
+
   smoke:
     # Live check against a real project with a READ-scoped key.
     # Runs only where the ORDERING_PROJECT variable and ORDERING_MCP_KEY secret exist,

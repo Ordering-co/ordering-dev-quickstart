@@ -41,7 +41,7 @@ Tools: `whoami`, `search_operations`, `describe_operation`, `read_operation`, `w
 ## Repo map
 
 - `SETUP.md`: the setup runbook you follow.
-- `ordering`: bash helper (`init`, `doctor`, `install`, `uninstall`, `claude`, `codex`, `cursor`, `code`, `api`, `spec`).
+- `ordering`: bash helper (`login`, `init`, `doctor`, `install`, `uninstall`, `claude`, `codex`, `cursor`, `code`, `api`, `spec`).
 - `.env.example`: template for `.env`. `.env` holds the developer's keys: never read, print or commit it.
 - `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`: MCP configs. They hold variable references only.
 - `.claude/settings.json`: denies Claude Code access to `.env`.
