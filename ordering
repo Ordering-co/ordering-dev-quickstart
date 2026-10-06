@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ordering: a small helper for the Ordering.co developer quickstart.
 #
+#   ./ordering init [SERVER_URL] Create .env, set your project from the Server URL, open the file
 #   ./ordering doctor            Check your project, MCP key and API key
 #   ./ordering install           Make the Ordering MCP available in Claude Code and Codex everywhere
 #   ./ordering uninstall         Undo install
@@ -38,7 +39,8 @@ die()   { printf '%serror:%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
 # ---------------------------------------------------------------- .env
 
 # Reads ORDERING_* variables from .env without executing it.
-# Variables already set in your shell take precedence, like most dotenv tools.
+# Values in .env win over your shell, so a key you just replaced in .env is
+# used right away. Variables missing from .env fall back to your shell.
 ENV_FILE="$ROOT/.env"
 ENV_SOURCES=""
 load_env() {
@@ -59,7 +61,7 @@ load_env() {
         case "$value" in \#*) value="" ;; esac
         value="${value%"${value##*[![:space:]]}"}"
       fi
-      if [ -z "${!key:-}" ] && [ -n "$value" ]; then
+      if [ -n "$value" ]; then
         export "$key=$value"
         ENV_SOURCES="$ENV_SOURCES $key"
       fi
@@ -212,7 +214,10 @@ cmd_doctor() {
       scope="$(json_get "$body" "$sc.token.scope")"
       expires="$(json_get "$body" "$sc.token.expires_at")"
       ok "Connected as $name ($role) · key $(mask "$ORDERING_MCP_KEY") from $(source_of ORDERING_MCP_KEY)"
-      [ "$project" = "$ORDERING_PROJECT" ] || warn "Key belongs to project '$project', but ORDERING_PROJECT is '$ORDERING_PROJECT'"
+      if [ "$project" != "$ORDERING_PROJECT" ]; then
+        fail "This key belongs to project '$project', but ORDERING_PROJECT is '$ORDERING_PROJECT'"
+        problems=$((problems + 1))
+      fi
       if [ "$scope" = "read" ]; then
         ok "Scope: read"
       else
@@ -320,6 +325,56 @@ cmd_editor() {
   exec "$bin" "$ROOT" "$@"
 }
 
+# ---------------------------------------------------------------- init
+
+# set_env_line KEY VALUE: replaces KEY=... in .env, or appends it.
+set_env_line() {
+  local key="$1" value="$2" tmp
+  tmp="$(tmpfile)"
+  awk -v k="$key" -v v="$value" '
+    BEGIN { done = 0 }
+    $0 ~ "^[[:space:]]*(export[[:space:]]+)?" k "[[:space:]]*=" { print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }
+  ' "$ENV_FILE" > "$tmp"
+  cat "$tmp" > "$ENV_FILE"
+}
+
+cmd_init() {
+  local input="${1:-}" project
+  if [ ! -f "$ENV_FILE" ]; then
+    cp "$ROOT/.env.example" "$ENV_FILE"
+    ok "Created .env"
+  fi
+  chmod 600 "$ENV_FILE"
+
+  if [ -n "$input" ]; then
+    case "$input" in
+      *ord_mcp_*) die "That is an MCP key, not the Server URL. It has been exposed: delete it in the Dashboard and create a new one." ;;
+    esac
+    input="$(printf '%s' "$input" | tr -d '[:space:]')"
+    input="${input%/}"
+    case "$input" in
+      */mcp/*) project="${input##*/mcp/}" ;;
+      *) project="$input" ;;
+    esac
+    project="${project%%[/?#]*}"
+    [[ "$project" =~ ^[a-z0-9_-]+$ ]] || die "Could not read a project ID from '$input'. Paste the Server URL, like https://api.ordering.co/mcp/yourproject"
+    set_env_line ORDERING_PROJECT "$project"
+    ok "Project set to '$project'"
+  fi
+
+  ok "Your keys go in: $ENV_FILE"
+  if [ "$(uname)" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}" ] && open -t "$ENV_FILE" 2>/dev/null; then
+    ok "Opened it in your text editor"
+  elif have xdg-open && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && xdg-open "$ENV_FILE" >/dev/null 2>&1; then
+    ok "Opened it in your text editor"
+  else
+    hint "Open it with: nano \"$ENV_FILE\""
+  fi
+  hint "Paste your MCP key right after ORDERING_MCP_KEY= (no spaces, no quotes) and save."
+}
+
 # ---------------------------------------------------------------- install
 
 MARK_BEGIN="# >>> ordering.co mcp >>>"
@@ -401,9 +456,16 @@ cmd_install() {
 
 cmd_uninstall() {
   local profile; profile="$(shell_profile)"
-  [ -n "$profile" ] && remove_profile_block "$profile" && ok "Removed the Ordering block from $profile"
-  have claude && { claude mcp remove ordering -s user >/dev/null 2>&1 && ok "Claude Code: 'ordering' removed" || true; }
-  have codex && { codex mcp remove ordering >/dev/null 2>&1 && ok "Codex: 'ordering' removed" || true; }
+  if [ -n "$profile" ]; then
+    remove_profile_block "$profile"
+    ok "Removed the Ordering block from $profile"
+  fi
+  if have claude && claude mcp remove ordering -s user >/dev/null 2>&1; then
+    ok "Claude Code: 'ordering' removed"
+  fi
+  if have codex && codex mcp remove ordering >/dev/null 2>&1; then
+    ok "Codex: 'ordering' removed"
+  fi
   ok "Your .env and your keys were not touched. Delete keys you no longer use in the Dashboard."
 }
 
@@ -464,7 +526,7 @@ cmd_spec() {
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
@@ -472,6 +534,7 @@ usage() {
 load_env
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
 case "$cmd" in
+  init)          cmd_init "$@" ;;
   doctor)        cmd_doctor ;;
   install)       cmd_install ;;
   uninstall)     cmd_uninstall ;;

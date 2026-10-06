@@ -4,25 +4,29 @@ Ask Claude Code or Codex about your Ordering.co orders, businesses and reports.
 
 &nbsp;
 
-## 1 · Create your key
+## 1 · Open your MCP settings
 
-**[Open your MCP settings →](https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens)**
+**[Open MCP settings →](https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens)**
 
-Create a key with **Read** access and keep it handy. It's shown only once.
+Keep the tab open. Your agent will ask for the **Server URL** shown there, and you'll create a **Read** key on the same page.
+
+<sub>Only administrators can open Settings. Read means your agent can look at your data, not change it.</sub>
 
 &nbsp;
 
 ## 2 · Paste this into Claude Code or Codex
 
 ```text
-Connect me to Ordering.co. Follow the steps in SETUP.md from https://github.com/Finitless-com/ordering-dev-quickstart
+Connect me to Ordering.co: clone https://github.com/Finitless-com/ordering-dev-quickstart to ~/ordering-dev-quickstart (or pull it if I already have it), then read its SETUP.md and follow it step by step.
 ```
 
-Your agent does the rest. It will ask you to paste your key into a file, never into the chat.
+Your agent asks for the Server URL, opens a file where you paste your key (never in the chat), tests the connection, and tells you when to restart.
+
+<sub>Works on macOS and Linux. On Windows, use WSL.</sub>
 
 &nbsp;
 
-## 3 · Ask
+## 3 · Restart your agent and ask
 
 > Who am I in Ordering?
 

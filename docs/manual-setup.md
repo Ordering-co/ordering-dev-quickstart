@@ -13,7 +13,7 @@ The [README](../README.md) prompt does all of this for you. Use this page to set
 ```bash
 git clone https://github.com/Finitless-com/ordering-dev-quickstart.git ~/ordering-dev-quickstart
 cd ~/ordering-dev-quickstart
-cp .env.example .env && chmod 600 .env   # fill in ORDERING_PROJECT and ORDERING_MCP_KEY
+./ordering init "<Server URL>"           # creates .env with your project; paste your key in it
 ./ordering doctor                        # checks project, key, scope and expiry
 ./ordering install                       # adds the server to Claude Code and Codex
 ```
