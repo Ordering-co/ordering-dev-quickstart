@@ -14,3 +14,6 @@ Thumbs.db
 
 # ./ordering login state (temporary private key and claim secret)
 .login/
+
+# ./ordering api audit log (method, path and body hash, no secrets)
+.api-audit.log

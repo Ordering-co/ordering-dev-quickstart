@@ -181,6 +181,14 @@ mcp_whoami() {
   case "$MCP_BODY" in *data:*) MCP_BODY="$(printf '%s\n' "$MCP_BODY" | sed -n 's/^data: *//p' | head -1)";; esac
 }
 
+# api_users_me <project> <api key>  → sets HTTP_CODE and API_BODY
+API_BODY=""
+api_users_me() {
+  http -H "@$(header_file "X-Api-Key: $2")" -H "Accept: application/json" \
+    "$API_HOST/$API_VERSION/$(lang)/$1/users/me"
+  API_BODY="$HTTP_BODY"
+}
+
 # ---------------------------------------------------------------- doctor
 
 cmd_doctor() {
@@ -348,11 +356,13 @@ cmd_editor() {
 # ---------------------------------------------------------------- init
 
 # set_env_line KEY VALUE: replaces KEY=... in .env, or appends it.
+# The value travels through awk's environment (ENVIRON), never as a -v argument,
+# so a key being written to .env never shows up in this process's argv.
 set_env_line() {
   local key="$1" value="$2" tmp
   tmp="$(tmpfile)"
-  awk -v k="$key" -v v="$value" '
-    BEGIN { done = 0 }
+  SET_ENV_LINE_VALUE="$value" awk -v k="$key" '
+    BEGIN { v = ENVIRON["SET_ENV_LINE_VALUE"]; done = 0 }
     $0 ~ "^[[:space:]]*(export[[:space:]]+)?" k "[[:space:]]*=" { print k "=" v; done = 1; next }
     { print }
     END { if (!done) print k "=" v }
@@ -510,6 +520,7 @@ cmd_login_start() {
 cmd_login_wait() {
   local timeout="${1:-540}"
   [ -f "$LOGIN_DIR/id" ] || die "No sign-in in progress. Run ./ordering login first."
+  local old_project="${ORDERING_PROJECT:-}" old_api_key="${ORDERING_API_KEY:-}"
   local base id secret expires deadline now
   base="$(connect_base)"
   id="$(cat "$LOGIN_DIR/id")"; secret="$(cat "$LOGIN_DIR/secret")"; expires="$(cat "$LOGIN_DIR/expires")"
@@ -542,7 +553,7 @@ cmd_login_wait() {
   # openssl pkeyutl only ever decrypts exactly one RSA block at a time.
   local ct_file ct_len block_file payload payload2=""
   local version pid project key key_name
-  local api_version pid2 api_key=""
+  local api_version pid2 api_key="" api_key_id="" api_hint=""
   ct_file="$(tmpfile)"
   printf '%s' "$ciphertext" | b64url_decode > "$ct_file" 2>/dev/null
   ct_len="$(wc -c < "$ct_file" | tr -d '[:space:]')"
@@ -568,29 +579,51 @@ cmd_login_wait() {
   fi
   rm -rf "$LOGIN_DIR"
 
+  # Read the API key's id as soon as block 2 is decrypted, so that any later
+  # failure in this function (on either block) can still point at a key the
+  # page already created server-side, even though this terminal never saves it.
+  if [ -n "$payload2" ]; then
+    api_key_id="$(json_get "$payload2" ai)"
+    [ -n "$api_key_id" ] || api_key_id="unknown"
+    api_hint=" An API key (id \"$api_key_id\") was also created for this sign-in and was not saved either. Revoke it in the Dashboard: $DASHBOARD_API_KEYS_URL"
+  fi
+
   version="$(json_get "$payload" v)"; pid="$(json_get "$payload" i)"
   project="$(json_get "$payload" p)"; key="$(json_get "$payload" k)"; payload=""
   if [ "$version" != "1" ] || [ "$pid" != "$id" ]; then
-    die "Received a key for another sign-in. Nothing was saved. Run ./ordering login again."
+    die "Received a key for another sign-in. Nothing was saved.$api_hint Run ./ordering login again."
   fi
-  [[ "$project" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Received an invalid project. Run ./ordering login again."
-  [[ "$key" =~ ^ord_mcp_[A-Za-z0-9_-]+$ ]] || die "Received an invalid key. Run ./ordering login again."
+  [[ "$project" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Received an invalid project. Nothing was saved.$api_hint Run ./ordering login again."
+  [[ "$key" =~ ^ord_mcp_[A-Za-z0-9_-]+$ ]] || die "Received an invalid key. Nothing was saved.$api_hint Run ./ordering login again."
 
   if [ -n "$payload2" ]; then
     api_version="$(json_get "$payload2" v)"; pid2="$(json_get "$payload2" i)"
     api_key="$(json_get "$payload2" a)"; payload2=""
     if [ "$api_version" != "1" ] || [ "$pid2" != "$id" ]; then
-      die "Received an API key for another sign-in. Nothing was saved. Run ./ordering login again."
+      die "Received an API key for another sign-in. Nothing was saved, including the MCP key. Revoke API key id \"$api_key_id\" in the Dashboard: $DASHBOARD_API_KEYS_URL"
     fi
-    [[ "$api_key" =~ ^[A-Za-z0-9_-]{20,128}$ ]] || die "Received an invalid API key. Nothing was saved. Run ./ordering login again."
+    [[ "$api_key" =~ ^[A-Za-z0-9_-]{20,128}$ ]] || die "Received an invalid API key. Nothing was saved, including the MCP key. Revoke API key id \"$api_key_id\" in the Dashboard: $DASHBOARD_API_KEYS_URL"
   fi
 
-  # Accept the key only if it is the one created for this sign-in: its name ends with our id.
+  # Accept the MCP key only if it is the one created for this sign-in: its name ends with our id.
   mcp_whoami "$project" "$key"
   key_name="$(json_get "$MCP_BODY" result.structuredContent.token.name)"
   if [ "$HTTP_CODE" != "200" ] || [ "${key_name: -8}" != "${id:0:8}" ]; then
     key=""
-    die "The received key could not be verified as yours (HTTP $HTTP_CODE). Nothing was saved. If you didn't start this sign-in, revoke unknown keys in the Dashboard."
+    die "The received key could not be verified as yours (HTTP $HTTP_CODE). Nothing was saved.$api_hint If you didn't start this sign-in, revoke unknown keys in the Dashboard."
+  fi
+
+  # Accept the API key only if it belongs to the same person as the MCP key above.
+  if [ -n "$api_key" ]; then
+    local mcp_user_id api_error api_user_id
+    mcp_user_id="$(json_get "$MCP_BODY" result.structuredContent.user.id)"
+    api_users_me "$project" "$api_key"
+    api_error="$(json_get "$API_BODY" error)"
+    api_user_id="$(json_get "$API_BODY" result.id)"
+    if [ "$HTTP_CODE" != "200" ] || [ "$api_error" != "false" ] || [ -z "$api_user_id" ] || [ "$api_user_id" != "$mcp_user_id" ]; then
+      key=""; api_key=""
+      die "The received API key could not be verified as yours (HTTP $HTTP_CODE). Nothing was saved, including the MCP key. Revoke API key id \"$api_key_id\" in the Dashboard: $DASHBOARD_API_KEYS_URL"
+    fi
   fi
 
   [ -f "$ENV_FILE" ] || cp "$ROOT/.env.example" "$ENV_FILE"
@@ -609,6 +642,14 @@ cmd_login_wait() {
     warn "This key has full access with your permissions and does not expire."
     hint "To revoke it: Dashboard > Settings > Developers > API Keys."
     api_key=""
+  elif [ -n "$old_api_key" ]; then
+    if [ "$old_project" = "$project" ]; then
+      warn "Your existing REST API key for this project was kept. This sign-in did not include a new one."
+    else
+      set_env_line ORDERING_API_KEY ""
+      export ORDERING_API_KEY=""
+      warn "Cleared the REST API key left over from project \"$old_project\". This sign-in did not include a new one for '$project'."
+    fi
   fi
 
   if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
@@ -811,6 +852,7 @@ claude_plugin_can_uninstall() {
 }
 
 DASHBOARD_MCP_URL="https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens"
+DASHBOARD_API_KEYS_URL="https://dashboard.ordering.co/settings?group=developers&category=developers&id=apiKeys"
 
 # Disconnects this folder: removes the key from .env (keeps the project), removes the
 # Claude Code plugin or server and the Codex server, and removes the shell integration.
@@ -840,9 +882,15 @@ cmd_logout() {
   fi
 
   title "Key"
+  local had_api_key=""
   if [ -f "$ENV_FILE" ]; then
     set_env_line ORDERING_MCP_KEY ""
     ok "Removed the MCP key from .env (your project stays set)"
+    if [ -n "${ORDERING_API_KEY:-}" ]; then
+      had_api_key=1
+      set_env_line ORDERING_API_KEY ""
+      ok "Removed the REST API key from .env"
+    fi
   else
     ok "No .env here."
   fi
@@ -854,7 +902,12 @@ cmd_logout() {
     printf '  No MCP key was in use here.\n'
   fi
   printf '  %sThis key still works until you revoke it.%s\n' "$C_WARN" "$C_0"
-  printf '  %s\n\n' "$DASHBOARD_MCP_URL"
+  printf '  %s\n' "$DASHBOARD_MCP_URL"
+  if [ -n "$had_api_key" ]; then
+    printf '  %sThe REST API key still works until you revoke it too, in Dashboard > Settings > Developers > API Keys.%s\n' "$C_WARN" "$C_0"
+    printf '  %s\n' "$DASHBOARD_API_KEYS_URL"
+  fi
+  echo
   if ! is_agent_session && [ -z "${ORDERING_NO_BROWSER:-}" ] && [ -z "${SSH_CONNECTION:-}" ]; then
     if [ "$(uname)" = "Darwin" ]; then open "$DASHBOARD_MCP_URL" 2>/dev/null || true
     elif have xdg-open && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then xdg-open "$DASHBOARD_MCP_URL" >/dev/null 2>&1 || true
@@ -868,6 +921,47 @@ cmd_reset() {
 }
 
 # ---------------------------------------------------------------- api
+
+AUDIT_LOG="$ROOT/.api-audit.log"
+
+# redact_secrets <file>: replaces the current ORDERING_API_KEY and ORDERING_MCP_KEY
+# values with *** in place. The values travel through awk's environment (ENVIRON),
+# never as a -v argument, so they never show up in this process's argv.
+redact_secrets() {
+  local f="$1" tmp
+  [ -n "${ORDERING_API_KEY:-}${ORDERING_MCP_KEY:-}" ] || return 0
+  tmp="$(tmpfile)"
+  REDACT_API_KEY="${ORDERING_API_KEY:-}" REDACT_MCP_KEY="${ORDERING_MCP_KEY:-}" awk '
+    BEGIN { a = ENVIRON["REDACT_API_KEY"]; m = ENVIRON["REDACT_MCP_KEY"] }
+    {
+      line = $0
+      if (length(a) > 0) gsub(a, "***", line)
+      if (length(m) > 0) gsub(m, "***", line)
+      print line
+    }
+  ' "$f" > "$tmp"
+  cat "$tmp" > "$f"
+}
+
+# audit_log METHOD PATH DATA: appends one line to .api-audit.log for a write that
+# was actually confirmed and sent (never for a refusal). Logs the method, the path
+# with control characters stripped, and a sha256 of the body, never the body itself.
+audit_log() {
+  local method="$1" path="$2" data="$3" ts path_clean body_hash
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  path_clean="$(printf '%s' "$path" | tr -d '\000-\037\177')"
+  if [ -n "$data" ]; then
+    case "$data" in
+      @*) body_hash="$(sha256_hex < "${data#@}")" ;;
+      *)  body_hash="$(printf '%s' "$data" | sha256_hex)" ;;
+    esac
+  else
+    body_hash="-"
+  fi
+  : >> "$AUDIT_LOG"
+  chmod 600 "$AUDIT_LOG" 2>/dev/null || true
+  printf '%s %s %s sha256=%s\n' "$ts" "$method" "$path_clean" "$body_hash" >> "$AUDIT_LOG"
+}
 
 cmd_api() {
   # --yes may appear anywhere after 'api': ./ordering api --yes POST /x '{}' and
@@ -889,6 +983,9 @@ cmd_api() {
   case "$method" in GET|POST|PUT|PATCH|DELETE) ;; *) die "Unsupported method: $method" ;; esac
   case "$path" in /*) ;; *) path="/$path" ;; esac
   case "$path" in *://*) die "PATH must be relative, e.g. /orders" ;; esac
+  if [ "$method" = "GET" ] && [ -n "$data" ]; then
+    die "GET does not take a body. Pass a JSON body only with POST, PUT, PATCH or DELETE."
+  fi
 
   if [ "$method" != "GET" ]; then
     # Writes need either a person at an interactive terminal, or an agent passing --yes
@@ -905,6 +1002,7 @@ cmd_api() {
     else
       die "$method changes production data and needs confirmation: run it yourself at an interactive terminal, or pass --yes after the person approved this exact request in the chat."
     fi
+    audit_log "$method" "$path" "$data"
   fi
 
   local args=(-sS -m 30 -X "$method" -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json")
@@ -916,6 +1014,7 @@ cmd_api() {
   tmp="$(tmpfile)"
   code="$(curl "${args[@]}" -o "$tmp" -w '%{http_code}' "$(api_base)$path")" || code="000"
   [ -n "$code" ] || code="000"
+  redact_secrets "$tmp"
   pretty "$tmp"
   if [ "$code" = "000" ] || [ "$code" -ge 400 ]; then
     printf '%sHTTP %s%s\n' "$C_ERR" "$code" "$C_0" >&2

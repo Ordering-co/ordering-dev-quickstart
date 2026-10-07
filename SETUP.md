@@ -121,7 +121,7 @@ Add only if it applies:
 - **Cursor or VS Code:** `docs/manual-setup.md`.
 - **They want to call the REST API from code:** `docs/rest-api.md`.
 
-## If they checked "Also give my agent the REST API"
+## If the REST API checkbox stayed checked (the default)
 
 `doctor` in step 3 will show `✔ API key … accepted` in its REST API section. From here on, reach the REST API only through `~/ordering-dev-quickstart/ordering api`, never with a raw `curl` using the key:
 

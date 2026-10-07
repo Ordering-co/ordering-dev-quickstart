@@ -150,9 +150,13 @@ Decision (Sergio, 2026-10-06): the same sign-in may also give the developer's ag
 1. Splits the ciphertext into 256-byte blocks and decrypts each one.
 2. Block 1 follows the v2.1 rules.
 3. Block 2, if present, must have `v == 1` and `i == id`, and `a` must match `^[A-Za-z0-9_-]{20,128}$`.
-4. Saves `ORDERING_API_KEY` in `.env`. The key is never printed. `doctor` checks it with `GET /orders`.
+4. Verifies the API key belongs to the same person as the MCP key: `GET {api_base}/users/me` with `X-Api-Key`, requiring HTTP 200, `error == false`, and `result.id` equal to the MCP key's `whoami` user id. On any failure here (including a foreign user id), saves **neither** key and tells the person to revoke the API key, printing its `ai` id and the link to Settings → Developers → API Keys.
+5. Saves `ORDERING_PROJECT` and `ORDERING_MCP_KEY` in `.env`, then `ORDERING_API_KEY` if block 2 passed. Neither key is ever printed. A `login` that didn't include a new block 2 keeps an existing `ORDERING_API_KEY` for the same project (with a warning), and clears it (with a warning) if the project changed. `doctor` checks the API key with `GET /orders`.
+6. `logout` also clears `ORDERING_API_KEY` from `.env` and prints the API Keys Dashboard link, the same way it already does for the MCP key.
 
 **Agents.** The REST API is reached through `./ordering api`, never with the raw key:
-- `GET` runs directly.
-- Any other method needs either a person at an interactive terminal (as before) or the `--yes` flag. The agent may pass `--yes` **only after the person approved that exact request in the chat**, shown as the method, the path, a summary of the body and the project.
+- `GET` runs directly and never takes a body.
+- Any other method needs either a person at an interactive terminal (as before) or the `--yes` flag. The agent may pass `--yes` **only after the person approved that exact request in the chat**, shown as the method, the path, a summary of the body and the project. `--yes` prints a one-line `CONFIRMED` audit line to stderr.
+- Every confirmed write is appended to `.api-audit.log` (0600, gitignored): a UTC timestamp, the method, the path and a sha256 of the body, never the body itself.
+- `./ordering api`'s own output has both keys redacted (`***`) before it is printed, so a response that happens to echo a key back never leaks it.
 - When the MCP cannot do something, the agent finds the operation in the OpenAPI (`./ordering spec`), explains it and asks before any write.

@@ -1,10 +1,12 @@
 // Simulates the docs.ordering.co/connect page (protocol v2.2, docs/login-protocol.md).
 // Usage: node tests/page_sim.mjs <relay base> <link> <typed code> <project> <key> [mode]
 // mode: "ok" (default) | "wrong-token" | "foreign-key" | "skip-register"
-//     | "with-api-key" (adds block 2 with a generated 64-char API key)
+//     | "with-api-key" (adds block 2 with a generated 64-char API key, registered
+//        to the same user id the MCP key's whoami reports)
 //     | "with-api-key-wrong-id" (block 2's "i" doesn't match the pairing id)
+//     | "with-api-key-foreign-user" (the API key is registered to a different user)
 const [base, link, typedCode, project, key, mode = 'ok'] = process.argv.slice(2);
-const apiBase = process.env.PAGE_API_BASE || base;  // where the fake core API (/__test/keys) lives
+const apiBase = process.env.PAGE_API_BASE || base;  // where the fake core API (/__test/keys, /__test/apikeys) lives
 const b64urlToBytes = (s) => Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 const toB64url = (bytes) => Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const hex = (bytes) => Buffer.from(bytes).toString('hex');
@@ -38,13 +40,21 @@ const block1 = new Uint8Array(await crypto.subtle.encrypt({name: 'RSA-OAEP'}, pu
 
 let allBytes = block1;
 let apiKey = '';
-if (mode === 'with-api-key' || mode === 'with-api-key-wrong-id') {
-  // Block 2: {"v":1,"i":<id>,"a":<api key>,"ai":<api key id>}. Registers nothing for
-  // it: unlike the MCP key, the terminal never verifies the API key against the core API.
+const apiKeyModes = ['with-api-key', 'with-api-key-wrong-id', 'with-api-key-foreign-user'];
+if (apiKeyModes.includes(mode)) {
+  // Block 2: {"v":1,"i":<id>,"a":<api key>,"ai":<api key id>}. Registered at
+  // /__test/apikeys with the owning user id, the way the real core API's
+  // GET users/me would report it: the terminal checks that id against whoami's.
+  // relay_mock.py's whoami always answers user id 1 for a valid MCP key.
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
   apiKey = Array.from(crypto.getRandomValues(new Uint8Array(64)), (b) => chars[b % chars.length]).join('');
   const apiKeyId = hex(crypto.getRandomValues(new Uint8Array(8)));
   const block2Id = mode === 'with-api-key-wrong-id' ? '0'.repeat(32) : id;
+  const userId = mode === 'with-api-key-foreign-user' ? 999 : 1;
+  await fetch(`${apiBase}/__test/apikeys`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key: apiKey, project, user_id: userId}),
+  });
   const payload2 = new TextEncoder().encode(JSON.stringify({v: 1, i: block2Id, a: apiKey, ai: apiKeyId}));
   if (payload2.length > 190) fail('api key payload would not fit', 3);
   const block2 = new Uint8Array(await crypto.subtle.encrypt({name: 'RSA-OAEP'}, publicKey, payload2));
