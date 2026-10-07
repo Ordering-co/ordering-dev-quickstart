@@ -1,4 +1,4 @@
-# `./ordering login` protocol (v2.1)
+# `./ordering login` protocol (v2.2)
 
 How the terminal gets an Ordering.co MCP key from a browser sign-in without the key being copied, pasted or seen by anyone in between. This file is the contract between `./ordering`, the relay on `docs.ordering.co` and the `/connect` page. `tests/relay_mock.py` and `tests/page_sim.mjs` implement it for tests.
 
@@ -132,3 +132,27 @@ Then the terminal:
 | XSS elsewhere on docs.ordering.co | `/connect` is a standalone page with `script-src 'self'`, no inline script, `frame-ancestors 'none'` and `Referrer-Policy: no-referrer`. A separate subdomain is the long-term fix | The bridges trust the whole origin |
 
 The notice text shown on the page must be the legally approved version. **It is a draft today.**
+
+## v2.2: optional REST API key in the same sign-in
+
+Decision (Sergio, 2026-10-06): the same sign-in may also give the developer's agent the **REST API** with full power. The current API keys (`user_keys`) have **no scope and no expiry**: they act with the user's full permissions until revoked in the Dashboard (Settings → Developers → API Keys). Scoped, revocable API keys are tracked in Linear SERGIO-51.
+
+**Page.** On the review step, a separate checkbox, **unchecked by default**: "Also give my agent the REST API". It is shown only when `users/me.level` is 0 or 2. The page shows this warning next to it: full access with your permissions, never expires, revoke it in the Dashboard. If checked, after creating the MCP key the page:
+
+1. Creates an API key with `POST {core}/{project}/users/{user_id}/keys`. The response carries `{id, key}`, where `key` is 64 characters (nanoid).
+2. Encrypts a **second block**, `{"v":1,"i":<id>,"a":<api key>,"ai":<api key id>}`, with RSA-OAEP SHA-256. It must fit in 190 bytes.
+3. Delivers `ciphertext` = base64url of **512 bytes**: block 1 is the MCP payload and block 2 is the API payload. Without the API option it delivers 256 bytes, as in v2.1.
+4. If delivery fails, revokes **both** the new MCP key and the new API key (`DELETE .../keys/{id}`).
+
+**Relay.** `deliver` accepts a ciphertext of exactly 256 or 512 bytes. Everything else is unchanged.
+
+**Terminal.**
+1. Splits the ciphertext into 256-byte blocks and decrypts each one.
+2. Block 1 follows the v2.1 rules.
+3. Block 2, if present, must have `v == 1` and `i == id`, and `a` must match `^[A-Za-z0-9_-]{20,128}$`.
+4. Saves `ORDERING_API_KEY` in `.env`. The key is never printed. `doctor` checks it with `GET /orders`.
+
+**Agents.** The REST API is reached through `./ordering api`, never with the raw key:
+- `GET` runs directly.
+- Any other method needs either a person at an interactive terminal (as before) or the `--yes` flag. The agent may pass `--yes` **only after the person approved that exact request in the chat**, shown as the method, the path, a summary of the body and the project.
+- When the MCP cannot do something, the agent finds the operation in the OpenAPI (`./ordering spec`), explains it and asks before any write.
