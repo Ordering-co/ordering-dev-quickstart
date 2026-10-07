@@ -76,6 +76,29 @@ rc=0; "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/wait.out" 2>&1 || r
 check "a key whose name doesn't match is refused" '[ "$rc" != 0 ] && grep -q "could not be verified" "$WORK/wait.out"'
 check "nothing is saved" '! grep -q "ord_mcp_" "$WORK/repo/.env" 2>/dev/null'
 
+echo "# optional REST API key (512-byte delivery)"
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" with-api-key > "$WORK/page.out"
+check "page delivers (204)" 'grep -q "\"deliver\":204" "$WORK/page.out"'
+API_KEY="$(sed -n 's/.*"api_key":"\([^"]*\)".*/\1/p' "$WORK/page.out")"
+check "page generated a 64-char API key" '[ "${#API_KEY}" = 64 ]'
+"$WORK/repo/ordering" login wait --timeout 20 > "$WORK/wait-api.out" 2>&1; rc=$?
+check "wait succeeds with the API key block" '[ "$rc" = 0 ]'
+check ".env has the MCP key" 'grep -qx "ORDERING_MCP_KEY=$KEY" "$WORK/repo/.env"'
+check ".env has the API key" 'grep -qx "ORDERING_API_KEY=$API_KEY" "$WORK/repo/.env"'
+check "the MCP key is never printed" '! grep -q "$KEY" "$WORK/wait-api.out"'
+check "the API key is never printed" '! grep -q "$API_KEY" "$WORK/wait-api.out"'
+check "REST API connected is shown" 'grep -q "REST API connected" "$WORK/wait-api.out"'
+
+echo "# API key block with the wrong id"
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" with-api-key-wrong-id > "$WORK/page.out"
+check "page delivers (204)" 'grep -q "\"deliver\":204" "$WORK/page.out"'
+rc=0; "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/wait-badapi.out" 2>&1 || rc=$?
+check "wait fails when the API key block has the wrong id" '[ "$rc" != 0 ]'
+check "wait explains nothing was saved" 'grep -qi "nothing was saved" "$WORK/wait-badapi.out"'
+check "nothing is saved at all" '! grep -q "ord_mcp_" "$WORK/repo/.env" 2>/dev/null'
+
 echo "# login code"
 fresh; start
 SECRET="$(cat "$WORK/repo/.login/secret")"
@@ -109,6 +132,26 @@ rc=0
 HOME="$WORK/iso-home" ZDOTDIR="$WORK/iso-home" CODEX_HOME="$WORK/iso-home/.codex" CLAUDE_CONFIG_DIR="$WORK/iso-home/.claude" \
   "$WORK/repo/ordering" logout > "$WORK/logout2.out" 2>&1 || rc=$?
 check "a second logout with no key left is not an error" '[ "$rc" = 0 ] && grep -q "No MCP key was in use here" "$WORK/logout2.out"'
+
+echo "# ./ordering api confirmation"
+fresh
+API_TEST_KEY="test-api-key-$(openssl rand -hex 16)"
+printf 'ORDERING_PROJECT=orderingtest\nORDERING_API_KEY=%s\n' "$API_TEST_KEY" > "$WORK/repo/.env"
+chmod 600 "$WORK/repo/.env"
+rc=0
+"$WORK/repo/ordering" api POST /orders/1/status '{"status":5}' < /dev/null > "$WORK/api-noyes.out" 2> "$WORK/api-noyes.err" || rc=$?
+check "api POST without a tty and without --yes is refused" '[ "$rc" != 0 ]'
+check "the refusal mentions --yes" 'grep -q -- "--yes" "$WORK/api-noyes.err"'
+check "nothing is printed to stdout on refusal" '[ ! -s "$WORK/api-noyes.out" ]'
+rc=0
+"$WORK/repo/ordering" api --yes POST /orders/1/status '{"status":5}' < /dev/null > "$WORK/api-yes.out" 2> "$WORK/api-yes.err" || rc=$?
+check "api POST with --yes before the method succeeds against the mock" '[ "$rc" = 0 ]'
+check "api POST with --yes prints a CONFIRMED audit line to stderr" \
+  'grep -q "CONFIRMED POST /orders/1/status on orderingtest" "$WORK/api-yes.err"'
+check "api POST with --yes returns the mock body" 'grep -q "\"error\": false" "$WORK/api-yes.out"'
+rc=0
+"$WORK/repo/ordering" api POST --yes /orders/2/status '{"status":5}' < /dev/null > "$WORK/api-yes2.out" 2> "$WORK/api-yes2.err" || rc=$?
+check "api POST with --yes placed after METHOD also works" '[ "$rc" = 0 ]'
 
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }

@@ -41,7 +41,7 @@ cd ~/ordering-dev-quickstart && ./ordering login start --client claude
 
 > Open this link and sign in to Ordering.co with your Dashboard or Billing account: **<link>**
 > When the page asks, type this code: **<code>**
-> Read the data notice, keep **Read** access unless you need changes, and click Connect.
+> Read the data notice, keep **Read** access unless you need changes. If you also want me to call the REST API for you, check **"Also give my agent the REST API"** — it's unchecked by default, gives full access to your account with your permissions, and never expires. Then click Connect.
 
 If the developer later says the page is asking for a code they don't have (it scrolled away, or they came back later), run `cd ~/ordering-dev-quickstart && ./ordering login code` and tell them the code it prints. Never print or guess the key itself.
 
@@ -120,6 +120,14 @@ Add only if it applies:
 - **They use the desktop app** (started from the Dock or Start menu): it doesn't see the key. Start it from a terminal, or see `docs/manual-setup.md`.
 - **Cursor or VS Code:** `docs/manual-setup.md`.
 - **They want to call the REST API from code:** `docs/rest-api.md`.
+
+## If they checked "Also give my agent the REST API"
+
+`doctor` in step 3 will show `✔ API key … accepted` in its REST API section. From here on, reach the REST API only through `~/ordering-dev-quickstart/ordering api`, never with a raw `curl` using the key:
+
+- `GET` runs freely.
+- Before any other method, show the developer the exact method, path, a summary of the body, and the project, and wait for an explicit yes in the chat. Only then run the same request again with `--yes` (it can go anywhere after `api`), for example `./ordering api --yes POST /orders/123/status '{"status":5}'`.
+- When the MCP can't do something, find the operation in the OpenAPI spec (`./ordering spec`, then search `spec/openapi.json` with `jq`), explain it, and offer the REST call before running it.
 
 ## Disconnect or reset (only if the developer asks)
 

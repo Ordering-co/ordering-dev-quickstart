@@ -101,6 +101,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": "invalid"})
             KEYS[body["key"]] = {"name": body["name"], "project": body["project"]}
             return self.send(204)
+        # Fakes the Ordering.co REST API for ./ordering api tests: any write to
+        # /v400/<lang>/<project>/<anything> succeeds with an empty result.
+        if re.match(r"^/v400/[^/]+/[^/]+/.+$", self.path):
+            length = int(self.headers.get("Content-Length") or 0)
+            if length:
+                self.rfile.read(length)
+            return self.send(200, {"error": False, "result": {}})
         m = re.match(r"^/mcp/([A-Za-z0-9_-]+)$", self.path)
         if m:
             auth = self.headers.get("Authorization") or ""
@@ -143,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
             if body and not self.deliver_token_ok(p, body["deliver_token"]):
                 return self.send(403, {"error": "forbidden"})
             ct = str(body["ciphertext"]) if body else ""
-            if not B64URL.match(ct) or len(b64url_decode(ct)) != 256:
+            if not B64URL.match(ct) or len(b64url_decode(ct)) not in (256, 512):
                 return self.send(400, {"error": "invalid"})
             if p["ciphertext"]:
                 return self.send(409, {"error": "delivered"})

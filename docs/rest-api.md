@@ -7,7 +7,14 @@ Use the REST API when you're building software that runs on its own, such as an 
 
 ## 1 · Get an API key
 
-Dashboard → **Settings → Developers → API Keys → Add API key**. Put it in `.env` as `ORDERING_API_KEY`, together with `ORDERING_PROJECT`. See [credentials](credentials.md) for how it differs from the MCP key.
+Two ways:
+- During `./ordering login`, check **"Also give my agent the REST API"** on the sign-in page. Unchecked by default.
+- Any time, in the Dashboard → **Settings → Developers → API Keys → Add API key**.
+
+Put it in `.env` as `ORDERING_API_KEY`, together with `ORDERING_PROJECT`. See [credentials](credentials.md) for how it differs from the MCP key.
+
+> [!WARNING]
+> **API keys have no scope and don't expire.** They act with your full permissions until you revoke them in the Dashboard (Settings → Developers → API Keys). Scoped, revocable API keys are planned.
 
 ## 2 · Make your first request
 
@@ -16,7 +23,7 @@ Dashboard → **Settings → Developers → API Keys → Add API key**. Put it i
 ./ordering api GET "/orders?orderBy=-id&page=1&page_size=5&mode=dashboard"
 ```
 
-`./ordering api` asks you to confirm any `POST`, `PUT`, `PATCH` or `DELETE` by typing your project ID in the terminal.
+`./ordering api` asks you to confirm any `POST`, `PUT`, `PATCH` or `DELETE`: by typing your project ID in the terminal, or, for an agent, with `--yes` after you approved that exact request in the chat.
 
 ## 3 · Build
 

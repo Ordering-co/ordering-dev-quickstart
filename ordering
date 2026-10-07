@@ -14,8 +14,9 @@
 #   ./ordering claude [args]     Start Claude Code with your .env loaded
 #   ./ordering codex [args]      Start Codex with the Ordering MCP configured
 #   ./ordering cursor | code     Open this folder in Cursor or VS Code with your .env loaded
-#   ./ordering api METHOD PATH [JSON | @file.json]
-#                                Call the REST API (non-GET requests ask for confirmation)
+#   ./ordering api [--yes] METHOD PATH [JSON | @file.json]
+#                                Call the REST API (non-GET requests ask for confirmation,
+#                                or pass --yes once a person approved this exact request)
 #   ./ordering spec              Download the current OpenAPI spec to spec/openapi.json
 #
 # Requirements: bash and curl. jq or python3 for doctor and pretty output.
@@ -536,11 +537,37 @@ cmd_login_wait() {
     die "Still waiting. Finish in the browser, then run: ./ordering login wait"
   fi
 
-  local payload version pid project key key_name
-  payload="$(printf '%s' "$ciphertext" | b64url_decode | openssl pkeyutl -decrypt -inkey "$LOGIN_DIR/private.pem" \
-    -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 2>/dev/null)" \
+  # The ciphertext is one 256-byte RSA-OAEP block (MCP key only, v2.1) or two
+  # (MCP key + optional REST API key, v2.2). Each block is decrypted on its own:
+  # openssl pkeyutl only ever decrypts exactly one RSA block at a time.
+  local ct_file ct_len block_file payload payload2=""
+  local version pid project key key_name
+  local api_version pid2 api_key=""
+  ct_file="$(tmpfile)"
+  printf '%s' "$ciphertext" | b64url_decode > "$ct_file" 2>/dev/null
+  ct_len="$(wc -c < "$ct_file" | tr -d '[:space:]')"
+  case "$ct_len" in
+    256|512) ;;
+    *) rm -rf "$LOGIN_DIR"; die "Received a key of the wrong size. Run ./ordering login again." ;;
+  esac
+
+  block_file="$(tmpfile)"
+  dd if="$ct_file" of="$block_file" bs=256 count=1 2>/dev/null
+  payload="$(openssl pkeyutl -decrypt -inkey "$LOGIN_DIR/private.pem" \
+    -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 \
+    -in "$block_file" 2>/dev/null)" \
     || { rm -rf "$LOGIN_DIR"; die "Could not decrypt the key. Run ./ordering login again."; }
+
+  if [ "$ct_len" = 512 ]; then
+    block_file="$(tmpfile)"
+    dd if="$ct_file" of="$block_file" bs=256 skip=1 count=1 2>/dev/null
+    payload2="$(openssl pkeyutl -decrypt -inkey "$LOGIN_DIR/private.pem" \
+      -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 \
+      -in "$block_file" 2>/dev/null)" \
+      || { rm -rf "$LOGIN_DIR"; die "Could not decrypt the API key. Nothing was saved. Run ./ordering login again."; }
+  fi
   rm -rf "$LOGIN_DIR"
+
   version="$(json_get "$payload" v)"; pid="$(json_get "$payload" i)"
   project="$(json_get "$payload" p)"; key="$(json_get "$payload" k)"; payload=""
   if [ "$version" != "1" ] || [ "$pid" != "$id" ]; then
@@ -548,6 +575,15 @@ cmd_login_wait() {
   fi
   [[ "$project" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Received an invalid project. Run ./ordering login again."
   [[ "$key" =~ ^ord_mcp_[A-Za-z0-9_-]+$ ]] || die "Received an invalid key. Run ./ordering login again."
+
+  if [ -n "$payload2" ]; then
+    api_version="$(json_get "$payload2" v)"; pid2="$(json_get "$payload2" i)"
+    api_key="$(json_get "$payload2" a)"; payload2=""
+    if [ "$api_version" != "1" ] || [ "$pid2" != "$id" ]; then
+      die "Received an API key for another sign-in. Nothing was saved. Run ./ordering login again."
+    fi
+    [[ "$api_key" =~ ^[A-Za-z0-9_-]{20,128}$ ]] || die "Received an invalid API key. Nothing was saved. Run ./ordering login again."
+  fi
 
   # Accept the key only if it is the one created for this sign-in: its name ends with our id.
   mcp_whoami "$project" "$key"
@@ -565,6 +601,15 @@ cmd_login_wait() {
   ok "Signed in as $(json_get "$MCP_BODY" result.structuredContent.user.name) ($(json_get "$MCP_BODY" result.structuredContent.user.role)) on project '$project'. Check that this is you and your project."
   ok "Key \"$key_name\" saved to .env"
   hint "To revoke it later: Dashboard > MCP settings, key \"$key_name\"."
+
+  if [ -n "$api_key" ]; then
+    set_env_line ORDERING_API_KEY "$api_key"
+    export ORDERING_API_KEY="$api_key"
+    ok "REST API connected"
+    warn "This key has full access with your permissions and does not expire."
+    hint "To revoke it: Dashboard > Settings > Developers > API Keys."
+    api_key=""
+  fi
 
   if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
     if printf '{"project":"%s","mcp_key":"%s"}' "$project" "$key" | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1; then
@@ -825,7 +870,17 @@ cmd_reset() {
 # ---------------------------------------------------------------- api
 
 cmd_api() {
-  [ $# -ge 2 ] || die 'Usage: ./ordering api METHOD PATH [JSON | @file.json]   e.g. ./ordering api GET "/orders?page_size=5&mode=dashboard"'
+  # --yes may appear anywhere after 'api': ./ordering api --yes POST /x '{}' and
+  # ./ordering api POST --yes /x '{}' are both valid.
+  local yes="" rest=() a
+  for a in "$@"; do
+    case "$a" in
+      --yes) yes=1 ;;
+      *) rest+=("$a") ;;
+    esac
+  done
+  set -- "${rest[@]}"
+  [ $# -ge 2 ] || die 'Usage: ./ordering api [--yes] METHOD PATH [JSON | @file.json]   e.g. ./ordering api GET "/orders?page_size=5&mode=dashboard"'
   require_project
   [ -n "${ORDERING_API_KEY:-}" ] || die "ORDERING_API_KEY is empty. Add it to .env (see .env.example)."
 
@@ -836,15 +891,20 @@ cmd_api() {
   case "$path" in *://*) die "PATH must be relative, e.g. /orders" ;; esac
 
   if [ "$method" != "GET" ]; then
-    # Writes need a person at an interactive terminal. This is a guardrail against
-    # accidental writes, not a security boundary: anyone with the key can call the API.
-    if [ ! -t 0 ] || [ ! -r /dev/tty ]; then
-      die "$method changes production data and needs confirmation at an interactive terminal. Run it yourself."
+    # Writes need either a person at an interactive terminal, or an agent passing --yes
+    # after the person approved this exact request in the chat. This is a guardrail
+    # against accidental writes, not a security boundary: anyone with the key can call
+    # the API directly.
+    if [ -n "$yes" ]; then
+      printf 'CONFIRMED %s %s on %s\n' "$method" "$path" "$ORDERING_PROJECT" >&2
+    elif [ -t 0 ] && [ -r /dev/tty ]; then
+      printf '%s%s %s%s on project %s%s%s (production, no sandbox)\n' "$C_WARN" "$method" "$path" "$C_0" "$C_B" "$ORDERING_PROJECT" "$C_0" >/dev/tty
+      printf 'Type the project ID to confirm: ' >/dev/tty
+      local answer; IFS= read -r answer </dev/tty
+      [ "$answer" = "$ORDERING_PROJECT" ] || die "Not confirmed. Nothing was sent."
+    else
+      die "$method changes production data and needs confirmation: run it yourself at an interactive terminal, or pass --yes after the person approved this exact request in the chat."
     fi
-    printf '%s%s %s%s on project %s%s%s (production, no sandbox)\n' "$C_WARN" "$method" "$path" "$C_0" "$C_B" "$ORDERING_PROJECT" "$C_0" >/dev/tty
-    printf 'Type the project ID to confirm: ' >/dev/tty
-    local answer; IFS= read -r answer </dev/tty
-    [ "$answer" = "$ORDERING_PROJECT" ] || die "Not confirmed. Nothing was sent."
   fi
 
   local args=(-sS -m 30 -X "$method" -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json")
@@ -879,7 +939,7 @@ cmd_spec() {
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
