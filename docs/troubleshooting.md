@@ -76,8 +76,8 @@ Missing or wrong API key, or the key can't use that operation. Check `ORDERING_A
 **`ORDERING_API_KEY holds an MCP key`**
 MCP keys (`ord_mcp_…`) and API keys are different. Put each in its own variable.
 
-**`… needs confirmation at an interactive terminal`**
-You, or an agent, ran a non-`GET` request without a terminal. Run it yourself in a terminal and type the project ID to confirm.
+**`… needs confirmation`**
+An agent ran a non-`GET` request without a terminal and without `--yes`. Either run it yourself in a terminal and type the project ID to confirm, or have the agent show you the exact request, get your yes in the chat, and run it again with `--yes`.
 
 **`200` but an empty `result`**
 The request worked but matched nothing. Check `where` filters, `mode`, and the `language` part of the URL (`ORDERING_LANG`).

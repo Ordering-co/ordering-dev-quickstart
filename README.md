@@ -18,7 +18,7 @@ Connect me to Ordering.co: clone https://github.com/Finitless-com/ordering-dev-q
 
 Open the link, sign in with your Ordering.co **Dashboard** or **Billing** account, type the code, and click **Connect**.
 
-<sub>You never copy or paste a key. Read access is the default: your agent can look at your data, not change it. Only administrators and business managers can connect.</sub>
+<sub>You never copy or paste a key. Read access is the default: your agent can look at your data, not change it. Only administrators and business managers can connect. The page also gives your agent the REST API by default (full access, no expiry); uncheck it if you only want the MCP.</sub>
 
 &nbsp;
 

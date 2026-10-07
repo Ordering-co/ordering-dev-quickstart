@@ -1,9 +1,10 @@
 """In-memory reference relay for ./ordering login tests (protocol v2).
 
 Implements docs/login-protocol.md with the validation rules the production
-relay on docs.ordering.co must apply. It also fakes the two core-API pieces the
-terminal touches, for tests only: key creation (POST /__test/keys) and the MCP
-`whoami` tool (POST /mcp/<project>).
+relay on docs.ordering.co must apply. It also fakes the core-API pieces the
+terminal touches, for tests only: MCP key creation (POST /__test/keys), API key
+creation (POST /__test/apikeys), the MCP `whoami` tool (POST /mcp/<project>), and
+GET /v400/<lang>/<project>/users/me (the server-side check for an API key).
 
 Usage: python3 tests/relay_mock.py <port>
 """
@@ -26,7 +27,8 @@ CLIENTS = {"Claude Code", "Codex", "Terminal"}
 # DER tail of an RSA SubjectPublicKeyInfo whose exponent is 65537.
 RSA2048_E65537_TAIL = bytes.fromhex("0203010001")
 PAIRINGS = {}
-KEYS = {}  # test-only: key -> {"name", "project"}
+KEYS = {}  # test-only: MCP key -> {"name", "project"}
+APIKEYS = {}  # test-only: API key -> {"project", "user_id"}
 
 
 def b64url_decode(value):
@@ -92,6 +94,16 @@ class Handler(BaseHTTPRequestHandler):
         return (m.group(1), m.group(2) or "") if m else (None, None)
 
     def do_GET(self):
+        # The terminal verifies a delivered API key server-side with this call,
+        # the same way the real core API would: the key must exist and belong
+        # to the project in the URL, and the response carries its owner's id.
+        m = re.match(r"^/v400/[^/]+/([^/]+)/users/me$", self.path)
+        if m:
+            auth = self.headers.get("X-Api-Key") or ""
+            known = APIKEYS.get(auth)
+            if not known or known["project"] != m.group(1):
+                return self.send(401, {"error": True, "result": "Permission denied"})
+            return self.send(200, {"error": False, "result": {"id": known["user_id"]}})
         self.send(405, {"error": "method_not_allowed"})
 
     def do_POST(self):
@@ -101,6 +113,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": "invalid"})
             KEYS[body["key"]] = {"name": body["name"], "project": body["project"]}
             return self.send(204)
+        if self.path == "/__test/apikeys":
+            body = self.read_json(["key", "project", "user_id"])
+            if not body:
+                return self.send(400, {"error": "invalid"})
+            APIKEYS[body["key"]] = {"project": body["project"], "user_id": body["user_id"]}
+            return self.send(204)
+        # Fakes the Ordering.co REST API for ./ordering api tests: any write to
+        # /v400/<lang>/<project>/<anything> succeeds, echoing the X-Api-Key it
+        # received back in the result so tests can check ./ordering api redacts it.
+        if re.match(r"^/v400/[^/]+/[^/]+/.+$", self.path):
+            length = int(self.headers.get("Content-Length") or 0)
+            if length:
+                self.rfile.read(length)
+            echo_key = self.headers.get("X-Api-Key") or ""
+            return self.send(200, {"error": False, "result": {"echo_api_key": echo_key}})
         m = re.match(r"^/mcp/([A-Za-z0-9_-]+)$", self.path)
         if m:
             auth = self.headers.get("Authorization") or ""
@@ -143,7 +170,7 @@ class Handler(BaseHTTPRequestHandler):
             if body and not self.deliver_token_ok(p, body["deliver_token"]):
                 return self.send(403, {"error": "forbidden"})
             ct = str(body["ciphertext"]) if body else ""
-            if not B64URL.match(ct) or len(b64url_decode(ct)) != 256:
+            if not B64URL.match(ct) or len(b64url_decode(ct)) not in (256, 512):
                 return self.send(400, {"error": "invalid"})
             if p["ciphertext"]:
                 return self.send(409, {"error": "delivered"})
