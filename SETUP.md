@@ -41,7 +41,7 @@ cd ~/ordering-dev-quickstart && ./ordering login start --client claude
 
 > Open this link and sign in to Ordering.co with your Dashboard or Billing account: **<link>**
 > When the page asks, type this code: **<code>**
-> Read the data notice, keep **Read** access unless you need changes. If you also want me to call the REST API for you, check **"Also give my agent the REST API"** — it's unchecked by default, gives full access to your account with your permissions, and never expires. Then click Connect.
+> Read the data notice, keep **Read** access unless you need changes. If you also want me to call the REST API for you, leave **"Also give my agent the REST API"** checked: it is on by default, gives full access with your permissions, and never expires. Uncheck it if you only want the MCP. Then click Connect.
 
 If the developer later says the page is asking for a code they don't have (it scrolled away, or they came back later), run `cd ~/ordering-dev-quickstart && ./ordering login code` and tell them the code it prints. Never print or guess the key itself.
 

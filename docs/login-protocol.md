@@ -137,7 +137,7 @@ The notice text shown on the page must be the legally approved version. **It is 
 
 Decision (Sergio, 2026-10-06): the same sign-in may also give the developer's agent the **REST API** with full power. The current API keys (`user_keys`) have **no scope and no expiry**: they act with the user's full permissions until revoked in the Dashboard (Settings → Developers → API Keys). Scoped, revocable API keys are tracked in Linear SERGIO-51.
 
-**Page.** On the review step, a separate checkbox, **unchecked by default**: "Also give my agent the REST API". It is shown only when `users/me.level` is 0 or 2. The page shows this warning next to it: full access with your permissions, never expires, revoke it in the Dashboard. If checked, after creating the MCP key the page:
+**Page.** On the review step, a separate checkbox, **checked by default** (Sergio, 2026-10-06): "Also give my agent the REST API". It is shown only when `users/me.level` is 0 or 2. The page shows this warning next to it: full access with your permissions, never expires, revoke it in the Dashboard. If checked, after creating the MCP key the page:
 
 1. Creates an API key with `POST {core}/{project}/users/{user_id}/keys`. The response carries `{id, key}`, where `key` is 64 characters (nanoid).
 2. Encrypts a **second block**, `{"v":1,"i":<id>,"a":<api key>,"ai":<api key id>}`, with RSA-OAEP SHA-256. It must fit in 190 bytes.

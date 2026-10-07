@@ -8,7 +8,7 @@ Use the REST API when you're building software that runs on its own, such as an 
 ## 1 · Get an API key
 
 Two ways:
-- During `./ordering login`, check **"Also give my agent the REST API"** on the sign-in page. Unchecked by default.
+- During `./ordering login`, leave **"Also give my agent the REST API"** checked on the sign-in page (it is on by default).
 - Any time, in the Dashboard → **Settings → Developers → API Keys → Add API key**.
 
 Put it in `.env` as `ORDERING_API_KEY`, together with `ORDERING_PROJECT`. See [credentials](credentials.md) for how it differs from the MCP key.
