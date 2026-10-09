@@ -34,8 +34,8 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
     writeFileSync(join(work, name + '.config'), text);
   }
   const bin = join(work, 'bin'); mkdirSync(bin);
-  writeFileSync(join(bin, 'opencode'), '#!/bin/sh\necho "opencode v${ORDERING_TEST_OPENCODE_VERSION:-1}.0.0"\n', { mode: 0o700 });
-  const run = (action, version = '1') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version } });
+  writeFileSync(join(bin, 'opencode'), '#!/bin/sh\nif [ "$1" = --version ]; then echo "opencode v${ORDERING_TEST_OPENCODE_VERSION:-1}.0.0"; elif [ "$1" = mcp ]; then echo "✓ ordering  connected"; elif [ "${ORDERING_TEST_ACTIVATION_FAIL:-}" = 1 ]; then exit 1; fi\n', { mode: 0o700 });
+  const run = (action, version = '1', failActivation = '') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation } });
   let result = run('install');
   assert.equal(result.status, 0, result.stderr);
   assert.equal((result.stdout.match(/registered globally/g) ?? []).length, 6);
@@ -53,6 +53,7 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
   assert.deepEqual(modern.mcp.servers.ordering.command, ['/bin/bash', join(work, 'ordering'), 'mcp']);
   assert.equal(modern.mcp.ordering, undefined, 'legacy owned entry removed after migration');
   assert.equal(modern.mcp.servers.ordering.enabled, undefined, 'no V1-only enabled field in V2');
+  assert.equal(run('install', '2', '1').status, 1, 'OpenCode runtime failure must not claim complete installation');
   const beforeRepeat = names.map(name => readFileSync(join(work, name + '.config'), 'utf8'));
   assert.equal(run('install').status, 0, 'idempotent second install');
   assert.deepEqual(names.map(name => readFileSync(join(work, name + '.config'), 'utf8')), beforeRepeat, 'repeat install preserves exact existing entries');

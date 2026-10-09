@@ -122,6 +122,15 @@ if (action === 'probe') {
     saveManifest(installed);
     console.log(`  ✔ ${row.displayName}: registered globally · ${row.configPath}`);
   }
+  if (installed.includes('opencode') && opencodeV2) {
+    const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `directory=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
+    const status = activate.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
+    if (status?.status === 0 && /^\s*✓\s+ordering\s+connected\s*$/m.test(status.stdout)) {
+      console.log('  ✔ OpenCode: native MCP runtime connected at the installation location.');
+    } else {
+      console.error('  ✘ OpenCode registration is saved, but native runtime activation failed. Reload OpenCode and rerun ./ordering install.'); failures++;
+    }
+  }
   console.log('  Restart existing clients or reload their MCP settings. New clients use the registered launcher without shell environment setup.');
   if (failures) process.exitCode = 1;
 } else if (action === 'status' || action === 'uninstall') {

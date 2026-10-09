@@ -146,3 +146,7 @@ cd ~/ordering-dev-quickstart && ./ordering reset --client claude
 ```
 
 `reset` runs `logout` and then the same sign-in as step 2: expect another `TELL THE USER` block, and follow it the same way.
+
+### OpenCode 2 activation
+
+The installer selects the native `mcp.servers` schema for OpenCode 2, preserving comments and unrelated config. It also registers Ordering in the native runtime at this installation location through OpenCode’s official API, then requires `ordering — connected` in its status. This avoids restarting the shared service or interrupting other sessions. Global config remains available to other project locations; existing chats may still need their normal MCP reload. A native activation failure is reported as partial installation, even when the config file is correct.

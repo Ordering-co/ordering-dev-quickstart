@@ -89,3 +89,7 @@ To sign in again right after, with a new key or after revoking the old one:
 git remote add upstream https://github.com/Finitless-com/ordering-dev-quickstart.git
 git fetch upstream && git merge upstream/main
 ```
+
+### OpenCode 2 activation
+
+The installer selects the native `mcp.servers` schema for OpenCode 2, preserving comments and unrelated config. It also registers Ordering in the native runtime at this installation location through OpenCode’s official API, then requires `ordering — connected` in its status. This avoids restarting the shared service or interrupting other sessions. Global config remains available to other project locations; existing chats may still need their normal MCP reload. A native activation failure is reported as partial installation, even when the config file is correct.
