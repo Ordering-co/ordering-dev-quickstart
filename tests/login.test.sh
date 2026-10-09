@@ -276,6 +276,20 @@ PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" OR
   "$WORK/repo/ordering" prepare > "$WORK/prepare-incomplete.out" 2>&1 || rc=$?
 check "a successful npm exit without required modules is not readiness" '[ "$rc" != 0 ] && [ ! -e "$WORK/repo/.clients/runtime-ready" ]'
 
+echo "# cleared local credentials override inherited shell values"
+fresh
+printf 'ORDERING_PROJECT=orderingtest\nORDERING_MCP_KEY=\nORDERING_API_KEY=\n' > "$WORK/repo/.env"
+ORDERING_MCP_KEY="$KEY" ORDERING_API_KEY="$API_TEST_KEY" \
+  "$WORK/repo/ordering" shell-env > "$WORK/cleared-shell.out" 2>&1
+check "a blank local MCP key is not inherited or exported" '! grep -q "export ORDERING_MCP_KEY=" "$WORK/cleared-shell.out"'
+check "cleared credentials are never printed" '! grep -q "$KEY" "$WORK/cleared-shell.out" && ! grep -q "$API_TEST_KEY" "$WORK/cleared-shell.out"'
+rc=0
+ORDERING_MCP_KEY="$KEY" "$WORK/repo/ordering" mcp > "$WORK/cleared-mcp.out" 2>&1 || rc=$?
+check "MCP refuses to launch with a cleared local key despite a shell key" '[ "$rc" != 0 ] && grep -q "No MCP key" "$WORK/cleared-mcp.out"'
+rc=0
+ORDERING_API_KEY="$API_TEST_KEY" "$WORK/repo/ordering" api GET /orders > "$WORK/cleared-api.out" 2>&1 || rc=$?
+check "REST API refuses a cleared local key despite a shell key" '[ "$rc" != 0 ] && grep -q "ORDERING_API_KEY is empty" "$WORK/cleared-api.out"'
+
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }
 H64="$(printf %064d 0)"; H32="$(printf %032d 1)"
