@@ -17,7 +17,7 @@ try {
   writeFileSync(bootstrap, `
 import { agents } from ${JSON.stringify('file://' + join(deps, 'add-mcp/dist/lib.js'))};
 import { pathToFileURL } from 'node:url';
-const names = ${JSON.stringify(names)};
+const names = process.env.ORDERING_TEST_CLIENTS ? process.env.ORDERING_TEST_CLIENTS.split(",") : ${JSON.stringify(names)};
 for (const [name, agent] of Object.entries(agents)) {
   agent.detectGlobalInstall = async () => names.includes(name);
   agent.configPath = ${JSON.stringify(work)} + '/' + name + '.config';
@@ -34,8 +34,20 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
     writeFileSync(join(work, name + '.config'), text);
   }
   const bin = join(work, 'bin'); mkdirSync(bin);
-  writeFileSync(join(bin, 'opencode'), '#!/bin/sh\nif [ "$1" = --version ]; then echo "opencode v${ORDERING_TEST_OPENCODE_VERSION:-1}.0.0"; elif [ "$1" = mcp ]; then echo "✓ ordering  connected"; elif [ "${ORDERING_TEST_ACTIVATION_FAIL:-}" = 1 ]; then exit 1; fi\n', { mode: 0o700 });
-  const run = (action, version = '1', failActivation = '') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation } });
+  writeFileSync(join(bin, 'opencode'), `#!/bin/sh
+if [ "$1" = --version ]; then
+  echo "opencode v\${ORDERING_TEST_OPENCODE_VERSION:-1}.0.0"
+elif [ "$1" = mcp ]; then
+  if [ -f "${join(work, 'native-active')}" ]; then echo "✓ ordering  connected"; else echo "No MCP servers configured"; fi
+elif [ "\${ORDERING_TEST_ACTIVATION_FAIL:-}" = 1 ]; then
+  exit 1
+elif [ "$2" = experimental.mcp.add ]; then
+  touch "${join(work, 'native-active')}"
+elif [ "$2" = experimental.mcp.remove ]; then
+  rm -f "${join(work, 'native-active')}"
+fi
+`, { mode: 0o700 });
+  const run = (action, version = '1', failActivation = '', testClients = '') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation, ORDERING_TEST_CLIENTS: testClients } });
   let result = run('install');
   assert.equal(result.status, 0, result.stderr);
   assert.equal((result.stdout.match(/registered globally/g) ?? []).length, 6);
@@ -54,6 +66,23 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
   assert.equal(modern.mcp.ordering, undefined, 'legacy owned entry removed after migration');
   assert.equal(modern.mcp.servers.ordering.enabled, undefined, 'no V1-only enabled field in V2');
   assert.equal(run('install', '2', '1').status, 1, 'OpenCode runtime failure must not claim complete installation');
+  assert.equal(run('install', '2', '', 'pi').status, 1, 'only an unsupported adapter cannot count as installed');
+  const disabledPath = join(work, 'opencode.config');
+  const disabledText = readFileSync(disabledPath, 'utf8');
+  const disabledConfig = jsonc.parse(disabledText);
+  disabledConfig.mcp.servers.ordering.disabled = true;
+  writeFileSync(disabledPath, JSON.stringify(disabledConfig));
+  const disabledResult = run('install', '2');
+  assert.equal(disabledResult.status, 1, 'explicitly disabled MCP is not a successful installation');
+  assert.ok(!disabledResult.stdout.includes('native MCP runtime connected'));
+  assert.equal(run('status').status, 1, 'status reports disabled registration');
+  writeFileSync(disabledPath, disabledText);
+  assert.equal(run('uninstall', '2', '1').status, 1, 'failed runtime removal is retryable');
+  assert.deepEqual(JSON.parse(readFileSync(join(work, '.clients/installed.json'), 'utf8')), ['opencode'], 'partial uninstall records only the pending client');
+  assert.ok(readFileSync(disabledPath, 'utf8').includes(join(work, 'ordering')), 'failed runtime removal preserves config');
+  assert.equal(run('uninstall', '2').status, 0, 'uninstall retries pending OpenCode runtime');
+  assert.equal(run('status').status, 1, 'zero registrations cannot be reported as ready');
+  assert.equal(run('install', '2').status, 0, 'install again after complete uninstall');
   const beforeRepeat = names.map(name => readFileSync(join(work, name + '.config'), 'utf8'));
   assert.equal(run('install').status, 0, 'idempotent second install');
   assert.deepEqual(names.map(name => readFileSync(join(work, name + '.config'), 'utf8')), beforeRepeat, 'repeat install preserves exact existing entries');

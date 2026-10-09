@@ -780,9 +780,14 @@ client_runtime() {
   node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' || die "Node.js 22+ is required."
   mkdir -p "$ROOT/.clients"
   chmod 700 "$ROOT/.clients"
-  if ! cmp -s "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/package-lock.json" || [ ! -f "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" ]; then
+  if ! cmp -s "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/runtime-ready" ||
+    [ ! -f "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" ] ||
+    [ ! -f "$ROOT/.clients/node_modules/add-mcp/dist/lib.js" ] ||
+    [ ! -f "$ROOT/.clients/node_modules/jsonc-parser/lib/umd/main.js" ]; then
+    rm -f "$ROOT/.clients/runtime-ready"
     cp "$ROOT/client-installer/package.json" "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/"
     npm ci --prefix "$ROOT/.clients" --ignore-scripts --no-audit --no-fund >&2 || die "Could not prepare the client installer. Login is saved; rerun ./ordering install."
+    cp "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/runtime-ready"
   fi
   command -v node > "$ROOT/.clients/node-path"
   chmod 600 "$ROOT/.clients/node-path"
@@ -791,7 +796,7 @@ client_runtime() {
 client_action() {
   [ -f "$ROOT/.clients/node-path" ] || die "Clients are not installed. Run ./ordering install."
   local node_path; node_path="$(cat "$ROOT/.clients/node-path")"
-  "$node_path" "$ROOT/scripts/client-installer.mjs" "$ROOT" "$1"
+  "$node_path" "$ROOT/scripts/client-installer.mjs" "$ROOT" "$1" "${ORDERING_PROJECT:-}"
 }
 
 cmd_mcp() {
@@ -857,6 +862,7 @@ cmd_uninstall() {
     remove_mcp_registrations
   fi
   ok "Your .env and your keys were not touched. Revoke unwanted keys in the Dashboard."
+  hint "Reload running clients to drop cached tools and credentials."
 }
 
 # True if this Claude Code CLI's 'plugin' subcommand has an 'uninstall' action.

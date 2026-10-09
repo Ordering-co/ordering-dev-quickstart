@@ -1,6 +1,6 @@
 // Client configs contain only the command, never an MCP or REST API key.
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, copyFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, copyFileSync, renameSync } from 'node:fs';
+import { resolve, join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
@@ -11,7 +11,11 @@ const manifestPath = join(runtime, 'installed.json');
 const { agents, detectGlobalAgents, upsertServer, removeServer, listInstalledServers } =
   await import(pathToFileURL(join(runtime, 'node_modules/add-mcp/dist/lib.js')));
 const loadManifest = () => existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : [];
-const saveManifest = value => writeFileSync(manifestPath, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
+const saveManifest = value => {
+  const temporary = `${manifestPath}.${process.pid}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
+  renameSync(temporary, manifestPath);
+};
 const command = '/bin/bash';
 const args = [join(root, 'ordering'), 'mcp'];
 const opencodeVersion = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 5000 });
@@ -31,11 +35,12 @@ const writeOpenCodeV2 = (path, existing) => {
   return { success: true };
 };
 const owned = config => {
-  const parts = Array.isArray(config.command) ? config.command : [config.command ?? config.cmd, ...(config.args ?? [])];
+  const parts = Array.isArray(config.command) ? config.command : [config.command ?? config.cmd, ...(Array.isArray(config.args) ? config.args : [])];
   return JSON.stringify(parts) === JSON.stringify([command, ...args]);
 };
 const sameServer = config => owned(config) || /^https:\/\/api\.ordering\.co\/mcp\/[a-zA-Z0-9_-]+$/.test(config.url ?? config.httpUrl ?? '');
-const readClients = () => listInstalledServers({ global: true });
+const disabled = config => config.disabled === true || config.enabled === false;
+const readClients = recorded => listInstalledServers({ global: true, ...(recorded?.length ? { agents: recorded } : {}) });
 
 // Probe the exact stdio command registered in every client. Only identity is printed.
 async function probe() {
@@ -74,7 +79,7 @@ async function probe() {
     const tools = await request(2, 'tools/list');
     if (!tools.tools?.some(tool => tool.name === 'whoami')) throw new Error('Missing identity tool');
     const result = await request(3, 'tools/call', { name: 'whoami', arguments: {} });
-    if (result.isError || !result.structuredContent?.project) throw new Error('Identity failed');
+    if (result.isError || !result.structuredContent?.project || (process.argv[4] && result.structuredContent.project !== process.argv[4])) throw new Error('Identity failed');
     console.log(`  ✔ MCP verified through the desktop-safe launcher · project ${result.structuredContent.project}`);
   } finally { child.stdin.end(); child.kill(); }
 }
@@ -89,6 +94,7 @@ if (action === 'probe') {
   const installed = [...previous];
   let failures = 0;
   let opencodeRegistered = false;
+  let registeredThisRun = 0;
   mkdirSync(join(runtime, 'backups'), { recursive: true, mode: 0o700 });
   for (const name of detected) {
     // Pi requires a separate adapter; having its skills directory is not proof of that adapter.
@@ -96,10 +102,12 @@ if (action === 'probe') {
     const row = rows.find(row => row.agentType === name);
     if (!row || row.error) { console.error(`  ✘ ${agents[name].displayName}: existing config could not be read; left unchanged.`); failures++; continue; }
     const existing = row.servers.find(server => server.serverName === 'ordering');
+    if (existing && disabled(existing.config)) { console.error(`  ✘ ${row.displayName}: Ordering is explicitly disabled; preserved. Enable it in the client before retrying.`); failures++; continue; }
     if (existing && !sameServer(existing.config)) { console.error(`  ✘ ${row.displayName}: another server is named ordering; left unchanged.`); failures++; continue; }
     if (existing && owned(existing.config) && !(name === 'opencode' && opencodeV2 && existing.configKey === 'mcp')) {
       if (!installed.includes(name)) installed.push(name);
       saveManifest(installed);
+      registeredThisRun++;
       if (name === 'opencode') opencodeRegistered = true;
       console.log(`  ✔ ${row.displayName}: registered globally (existing entry preserved) · ${row.configPath}`);
       continue;
@@ -111,9 +119,13 @@ if (action === 'probe') {
     const hadConfig = existsSync(row.configPath);
     const backup = join(runtime, 'backups', `${name}-${Date.now()}.config`);
     if (hadConfig) { copyFileSync(row.configPath, backup); chmodSync(backup, 0o600); }
-    const result = name === 'opencode' && opencodeV2
-      ? writeOpenCodeV2(row.configPath, existing)
-      : upsertServer(name, 'ordering', { command, args });
+    let result;
+    try {
+      mkdirSync(dirname(row.configPath), { recursive: true, mode: 0o700 });
+      result = name === 'opencode' && opencodeV2
+        ? writeOpenCodeV2(row.configPath, existing)
+        : upsertServer(name, 'ordering', { command, args });
+    } catch { result = { success: false }; }
     const fresh = (await readClients()).find(row => row.agentType === name)?.servers.find(server => server.serverName === 'ordering');
     if (!result.success || !fresh || !owned(fresh.config)) {
       if (hadConfig) copyFileSync(backup, row.configPath);
@@ -122,9 +134,11 @@ if (action === 'probe') {
     chmodSync(row.configPath, 0o600);
     if (!installed.includes(name)) installed.push(name);
     saveManifest(installed);
+    registeredThisRun++;
     if (name === 'opencode') opencodeRegistered = true;
     console.log(`  ✔ ${row.displayName}: registered globally · ${row.configPath}`);
   }
+  if (!registeredThisRun) { console.error('  ✘ No supported client was registered. Installation is incomplete.'); failures++; }
   if (opencodeRegistered && opencodeV2) {
     const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `directory=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
     const status = activate.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
@@ -137,25 +151,40 @@ if (action === 'probe') {
   console.log('  Restart existing clients or reload their MCP settings. New clients use the registered launcher without shell environment setup.');
   if (failures) process.exitCode = 1;
 } else if (action === 'status' || action === 'uninstall') {
-  const rows = await readClients();
   const recorded = loadManifest();
+  const rows = await readClients(recorded);
   if (action === 'status' && !recorded.length) { console.error('  ✘ No client registrations recorded. Run ./ordering install.'); process.exit(1); }
   let failures = 0;
+  const remaining = [];
   for (const name of recorded) {
     const row = rows.find(row => row.agentType === name);
     const entry = row?.servers.find(server => server.serverName === 'ordering');
+    if (!row?.detected && row?.configPath && existsSync(row.configPath)) {
+      console.error(`  ⚠ ${agents[name].displayName}: client unavailable; existing config preserved.`); failures++; remaining.push(name); continue;
+    }
     if (action === 'status') {
-      const valid = entry && owned(entry.config);
-      console.log(`  ${valid ? '✔' : '✘'} ${agents[name].displayName}: ${valid ? 'registered' : 'missing or changed'}`);
+      const valid = entry && owned(entry.config) && !disabled(entry.config);
+      console.log(`  ${valid ? '✔' : '✘'} ${agents[name].displayName}: ${valid ? 'registered' : 'missing, changed or disabled'}`);
       if (!valid) failures++;
     } else if (entry && owned(entry.config)) {
+      if (name === 'opencode' && opencodeV2) {
+        const status = spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 });
+        const present = /^\s*[✓○✗⚠]\s+ordering\s+/m.test(status.stdout ?? '');
+        const remove = status.status === 0 && present
+          ? spawnSync('opencode', ['api', 'experimental.mcp.remove', '--param', 'server=ordering', '--param', `directory=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 })
+          : null;
+        const after = remove?.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : status;
+        if (after.status !== 0 || /^\s*[✓○✗⚠]\s+ordering\s+/m.test(after.stdout ?? '')) {
+          console.error('  ✘ OpenCode native runtime could not be removed; registration kept for retry.'); failures++; remaining.push(name); continue;
+        }
+      }
       const result = removeServer(name, 'ordering');
-      if (!result.success) failures++;
+      if (!result.success) { failures++; remaining.push(name); }
       console.log(`  ${result.success ? '✔' : '✘'} ${agents[name].displayName}: ${result.success ? 'Ordering registration removed' : 'removal failed'}`);
     } else if (entry || row?.error) {
-      console.error(`  ⚠ ${agents[name].displayName}: changed or unreadable config; left unchanged.`); failures++;
+      console.error(`  ⚠ ${agents[name].displayName}: changed or unreadable config; left unchanged.`); failures++; remaining.push(name);
     }
   }
-  if (action === 'uninstall' && !failures) saveManifest([]);
+  if (action === 'uninstall') saveManifest(remaining);
   if (failures) process.exitCode = 1;
 } else { throw new Error('Unknown client installer action'); }

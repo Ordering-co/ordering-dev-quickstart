@@ -93,3 +93,9 @@ git fetch upstream && git merge upstream/main
 ### OpenCode 2 activation
 
 The installer selects the native `mcp.servers` schema for OpenCode 2, preserving comments and unrelated config. It also registers Ordering in the native runtime at this installation location through OpenCode’s official API, then requires `ordering — connected` in its status. This avoids restarting the shared service or interrupting other sessions. Global config remains available to other project locations; existing chats may still need their normal MCP reload. A native activation failure is reported as partial installation, even when the config file is correct.
+
+### Recovering partial installation
+
+An interrupted dependency download is never marked ready. Rerun `./ordering install`: it repairs missing runtime modules before probing or registering clients. A disabled Ordering entry is preserved and reported as incomplete; enable it explicitly in that client before retrying. Detecting only a client that needs an additional adapter does not count as successful installation.
+
+Uninstall verifies removal of the launcher-owned OpenCode 2 runtime before removing its config. If runtime removal fails, the entry is kept for retry. Successfully removed clients are cleared from the registration record even when another client is still pending. Changed or unreadable entries remain untouched. Reload other running clients to drop their cached tools; server credentials remain valid until revoked in the Dashboard.
