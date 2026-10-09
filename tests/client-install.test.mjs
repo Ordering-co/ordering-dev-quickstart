@@ -62,9 +62,16 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
   result = run('install');
   assert.equal(result.status, 1, 'name collision is partial failure');
   assert.ok(readFileSync(join(work, 'cursor.config'), 'utf8').includes('someone-elses-server'));
+  const openCodePath = join(work, 'opencode.config');
+  const openCodeConflict = jsonc.parse(readFileSync(openCodePath, 'utf8'));
+  openCodeConflict.mcp.servers.ordering.command = ['someone-elses-opencode-server'];
+  writeFileSync(openCodePath, JSON.stringify(openCodeConflict));
+  const conflictResult = run('install', '2');
+  assert.equal(conflictResult.status, 1);
+  assert.ok(!conflictResult.stdout.includes('native MCP runtime connected'), 'name collision cannot activate a replacement at runtime');
   assert.equal(run('uninstall').status, 1, 'changed registration is preserved');
   assert.ok(readFileSync(join(work, 'cursor.config'), 'utf8').includes('someone-elses-server'));
-  for (const name of names.filter(name => name !== 'cursor')) {
+  for (const name of names.filter(name => name !== 'cursor' && name !== 'opencode')) {
     const text = readFileSync(join(work, name + '.config'), 'utf8');
     assert.ok(!text.includes(join(work, 'ordering')), name + ': own registration removed');
     assert.ok(text.includes('other-command'), name + ': unrelated server kept on uninstall');

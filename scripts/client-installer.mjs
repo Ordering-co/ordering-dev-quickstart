@@ -88,6 +88,7 @@ if (action === 'probe') {
   const rows = await readClients();
   const installed = [...previous];
   let failures = 0;
+  let opencodeRegistered = false;
   mkdirSync(join(runtime, 'backups'), { recursive: true, mode: 0o700 });
   for (const name of detected) {
     // Pi requires a separate adapter; having its skills directory is not proof of that adapter.
@@ -99,6 +100,7 @@ if (action === 'probe') {
     if (existing && owned(existing.config) && !(name === 'opencode' && opencodeV2 && existing.configKey === 'mcp')) {
       if (!installed.includes(name)) installed.push(name);
       saveManifest(installed);
+      if (name === 'opencode') opencodeRegistered = true;
       console.log(`  ✔ ${row.displayName}: registered globally (existing entry preserved) · ${row.configPath}`);
       continue;
     }
@@ -120,9 +122,10 @@ if (action === 'probe') {
     chmodSync(row.configPath, 0o600);
     if (!installed.includes(name)) installed.push(name);
     saveManifest(installed);
+    if (name === 'opencode') opencodeRegistered = true;
     console.log(`  ✔ ${row.displayName}: registered globally · ${row.configPath}`);
   }
-  if (installed.includes('opencode') && opencodeV2) {
+  if (opencodeRegistered && opencodeV2) {
     const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `directory=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
     const status = activate.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
     if (status?.status === 0 && /^\s*✓\s+ordering\s+connected\s*$/m.test(status.stdout)) {
