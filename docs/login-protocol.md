@@ -68,7 +68,7 @@ The deliver token only ever travels in request bodies: Cloudflare request logs c
    - the host, labelled *"name reported by the terminal, not verified"*;
    - how long ago it was created;
    - a red warning if `same_country` is false.
-2. Sign in with **Dashboard** or **Billing / Partners** through the existing bridges. With Billing, the person picks the project.
+2. Sign in with **Dashboard** or **Accounts (Billing)** through the existing bridges. With Billing, the person picks the project.
 3. `GET {core}/{project}/users/me`. It requires `level` 0 or 2.
 4. `GET {core}/{project}/mcp/status`. Stop if:
    - `enabled` is false;
@@ -104,7 +104,7 @@ Then the terminal:
 1. Decrypts with `openssl pkeyutl -decrypt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256`.
 2. Requires `v == 1`, `i == id`, a valid project and a key starting with `ord_mcp_`.
 3. Calls the MCP `whoami` tool. **It accepts the key only if `token.name` ends with the first 8 chars of `id`.** This refuses a key that someone else delivered.
-4. Writes `.env` under `umask 077`. If the Claude Code plugin is installed, it also runs `claude plugin configure ordering@ordering-dev --values-stdin`.
+4. Writes `.env` under `umask 077`. If a legacy Claude plugin declares `mcp_key`, its schema is inspected and the credential is passed only through `--values-stdin`. A skill-only plugin receives no credential; its MCP connection stays in the quickstart launcher.
 5. Prints the key's name, so the person can revoke it, and deletes `.login/`.
 
 ## Relay rules
@@ -131,13 +131,13 @@ Then the terminal:
 | A lost claim response | The key name is printed. Revoke it in the Dashboard and run `login` again | An orphan key until it expires |
 | XSS elsewhere on docs.ordering.co | `/connect` is a standalone page with `script-src 'self'`, no inline script, `frame-ancestors 'none'` and `Referrer-Policy: no-referrer`. A separate subdomain is the long-term fix | The bridges trust the whole origin |
 
-The notice text shown on the page must be the legally approved version. **It is a draft today.**
+The notice text shown on the page must be the legally approved version. Keep its version aligned with the server; a version mismatch blocks pairing.
 
 ## v2.2: optional REST API key in the same sign-in
 
-Decision (Sergio, 2026-10-06): the same sign-in may also give the developer's agent the **REST API** with full power. The current API keys (`user_keys`) have **no scope and no expiry**: they act with the user's full permissions until revoked in the Dashboard (Settings → Developers → API Keys). Scoped, revocable API keys are tracked in Linear SERGIO-51.
+The sign-in contract: the same sign-in may also give the developer's agent the **REST API** with full power. The current API keys (`user_keys`) have **no scope and no expiry**: they act with the user's full permissions until revoked in the Dashboard (Settings → Developers → API Keys). MCP scope does not restrict this separate REST credential.
 
-**Page.** On the review step, a separate checkbox, **checked by default** (Sergio, 2026-10-06): "Also give my agent the REST API". It is shown only when `users/me.level` is 0 or 2. The page shows this warning next to it: full access with your permissions, never expires, revoke it in the Dashboard. If checked, after creating the MCP key the page:
+**Page.** On the review step, a separate checkbox, **checked by default**: "Also give my agent the REST API". It is shown only when `users/me.level` is 0 or 2. The page shows this warning next to it: full access with your permissions, never expires, revoke it in the Dashboard. If checked, after creating the MCP key the page:
 
 1. Creates an API key with `POST {core}/{project}/users/{user_id}/keys`. The response carries `{id, key}`, where `key` is 64 characters (nanoid).
 2. Encrypts a **second block**, `{"v":1,"i":<id>,"a":<api key>,"ai":<api key id>}`, with RSA-OAEP SHA-256. It must fit in 190 bytes.

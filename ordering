@@ -658,12 +658,23 @@ cmd_login_wait() {
   fi
 
   if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
-    if printf '{"project":"%s","mcp_key":"%s"}' "$project" "$key" | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1; then
-      ok "Claude Code plugin updated (key stored in your system keychain)"
+    local plugin_options
+    plugin_options="$(claude plugin configure "$PLUGIN_ID" --json 2>/dev/null || true)"
+    if [ "$(json_get "$plugin_options" schema.mcp_key.type)" = "string" ]; then
+      if printf '{"project":"%s","mcp_key":"%s"}' "$project" "$key" | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1; then
+        ok "Legacy Claude Code plugin credential updated through private input"
+        hint "Update to the skill-only plugin and use the quickstart launcher to avoid duplicate servers."
+      else
+        warn "Could not update the legacy plugin. Review its native configuration or update to the skill-only plugin."
+      fi
+    elif [ "$(json_get "$plugin_options" schema)" = "{}" ]; then
+      ok "Skill-only Ordering plugin uses the registered MCP launcher; no plugin credential copied"
     else
-      warn "Could not update the Claude Code plugin. Run: claude plugin configure $PLUGIN_ID"
+      warn "Could not inspect plugin options; no credential copied. Review the plugin in its native client."
     fi
+    plugin_options=""
   fi
+
   key=""
   if [ -n "${ORDERING_LOGIN_SKIP_DOCTOR:-}" ]; then return 0; fi
   cmd_doctor
@@ -842,19 +853,27 @@ cmd_install() {
   hint "Restart running clients or reload their MCP settings, then ask: Who am I in Ordering?"
 }
 
-# Removes the shell integration and the 'ordering' server from Claude Code and
-# Codex. Shared by uninstall (keeps .env) and logout (also clears the key).
+# Without the ownership manifest, a server named "ordering" may belong to another
+# setup or session. Preserve legacy native entries rather than removing by name.
 remove_mcp_registrations() {
-  local profile; profile="$(shell_profile)"
+  local config_file profile needs_review=0
+  for config_file in "$HOME/.claude.json" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.claude.json"; do
+    if [ -f "$config_file" ] && grep -Eq '"ordering"[[:space:]]*:' "$config_file"; then
+      warn "Claude Code: legacy Ordering configuration preserved (no ownership record). Review it in your client."
+      needs_review=1
+      break
+    fi
+  done
+  config_file="${CODEX_HOME:-$HOME/.codex}/config.toml"
+  if [ -f "$config_file" ] && grep -Eq "^[[:space:]]*\\[[[:space:]]*[\"']?mcp_servers[\"']?[[:space:]]*\\.[[:space:]]*[\"']?ordering[\"']?[[:space:]]*\\]" "$config_file"; then
+    warn "Codex: legacy Ordering configuration preserved (no ownership record). Review it in your client."
+    needs_review=1
+  fi
+  [ "$needs_review" -eq 0 ] || return 1
+  profile="$(shell_profile)"
   if [ -n "$profile" ]; then
     remove_profile_block "$profile"
     ok "Removed the Ordering block from $profile"
-  fi
-  if have claude && claude mcp remove ordering -s user >/dev/null 2>&1; then
-    ok "Claude Code: 'ordering' removed"
-  fi
-  if have codex && codex mcp remove ordering >/dev/null 2>&1; then
-    ok "Codex: 'ordering' removed"
   fi
 }
 
@@ -864,7 +883,7 @@ cmd_uninstall() {
     local profile; profile="$(shell_profile)"
     [ -z "$profile" ] || remove_profile_block "$profile"
   else
-    remove_mcp_registrations
+    remove_mcp_registrations || die "Legacy registrations need review before disconnecting; no native entries or credentials were removed."
   fi
   ok "Your .env and your keys were not touched. Revoke unwanted keys in the Dashboard."
   hint "Reload running clients to drop cached tools and credentials."

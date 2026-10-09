@@ -11,10 +11,10 @@ A developer asked you to connect them to the Ordering.co MCP. Follow these steps
 
 ## 0. Check where you are running
 
-- **Native Windows (PowerShell or cmd):** stop. Tell them to run their agent inside WSL or Git Bash and paste the prompt again.
+- **Native Windows (PowerShell or cmd):** stop. Tell them to run their agent inside WSL and paste the prompt again. Git Bash may run the Bash login helper, but its global installer/desktop integration is not verified.
 - This setup registers Ordering globally in detected MCP clients, including desktop apps. Before step 2, explain the scope: a login plus client configuration, using the scope the person chooses. In Codex, request network and outside-workspace writes through its approval system as needed.
 - Global installation requires Node.js 22+ and npm. Detect those before starting. If missing, the login can still save credentials, but do not promise installed clients. Do not install unrelated software or approve write tools automatically.
-- **A remote or cloud session works too.** The developer opens the link on any computer where they can sign in.
+- **A remote or cloud session configures the machine running this terminal.** The developer can sign in from another computer, but their laptop and native desktop apps are not configured automatically. Run the installer on the machine that hosts the intended client. WSL targets clients inside WSL, not native Windows desktop apps; Git Bash is not verified for global installation.
 
 ## 1. Get the repo
 
@@ -40,7 +40,7 @@ cd ~/ordering-dev-quickstart && ./ordering login start --client claude --install
 
 **The developer cannot see your tool output.** It prints a `TELL THE USER` block with a link and a code, and does not open a browser itself. Your reply MUST include both the link and the code from that block, in the same message, adapted to their language. Do not open the browser yourself: the developer opens the link.
 
-> Open this link and sign in to Ordering.co with your Dashboard or Billing account: **<link>**
+> Open this link and sign in to Ordering.co with your Dashboard or Accounts (Billing) account: **<link>**
 > When the page asks, type this code: **<code>**
 > Read the data notice, keep **Read** access unless you need changes. If you also want me to call the REST API for you, leave **"Also give my agent the REST API"** checked: it is on by default, gives full access with your permissions, and never expires. Uncheck it if you only want the MCP. Then click Connect.
 
@@ -70,11 +70,15 @@ cd ~/ordering-dev-quickstart && ./ordering login wait
 1. Ask for the **Server URL** from https://dashboard.ordering.co/settings?group=developers&category=developers&id=mcpTokens. It isn't secret.
 2. Run `cd ~/ordering-dev-quickstart && ./ordering init "<Server URL>"`. It opens `.env`.
 3. Tell them to create a **Read** key on that page and paste it right after `ORDERING_MCP_KEY=`, then save.
-4. Run `./ordering doctor`.
+4. Run `./ordering doctor`, then `./ordering install` when the identity check passes. Follow steps 4–5 and observe `whoami` inside the intended client.
 
 ## 3. Check the connection
 
-Continue only if `doctor` shows **`✔ Connected as …`** in the MCP section and there are no `✘` lines.
+```bash
+cd ~/ordering-dev-quickstart && ./ordering doctor
+```
+
+`doctor` tests the helper, not a call from the running client. Continue only if `doctor` shows **`✔ Connected as …`** in the MCP section and there are no `✘` lines.
 
 - **`✘` lines:** explain each one in one sentence with its fix from `docs/troubleshooting.md`.
 - **`Scope: write`:** it works, but recommend Read for everyday use.
@@ -95,7 +99,7 @@ Continue only if `doctor` shows **`✔ Connected as …`** in the MCP section an
 
 This is the moment they should feel it working: give them a concrete menu, not just an invitation to ask something. Tell them, briefly and in their language, as ready-to-copy lines (keep the whole menu to about 8 lines):
 
-> Ready. Restart your running client (or reload its MCP settings), open a new chat, and try one of these:
+> Registration verified. Restart your running client (or reload its MCP settings), open a new chat, and try one of these:
 >
 > - Who am I in Ordering?
 > - How many orders came in today, by status?
@@ -114,7 +118,9 @@ Then add:
 
 > Your key expires in <N> days. To renew it, run `~/ordering-dev-quickstart/ordering login --install`, sign in again and reload your client.
 
-Take `<N>` and the scope from the `doctor` output in step 3.
+Take `<N>` and the scope from the `doctor` output in step 3. The browser pairing defaults to 30 days, whereas manually created MCP keys default to 7; both are capped by the server (currently 365).
+
+Only report a client as connected after its own runtime discovers the tools and completes `whoami`. Use `search_operations` → `describe_operation` → `read_operation` for a permitted, minimal order query; an empty list is valid. Never treat the launcher probe or `clients` read-back as proof of every app. Record the client/version, registration, runtime, authenticated call and any reload/trust still needed. See [clients.md](docs/clients.md).
 
 Add only if it applies:
 - **Desktop app:** restart/reload to discover the new server. The global launcher loads the key itself; no terminal launch is required. Native Windows still uses the documented WSL path.
@@ -137,12 +143,12 @@ If they ask to disconnect, log out, start over, or say their key stopped working
 cd ~/ordering-dev-quickstart && ./ordering logout
 ```
 
-This removes unchanged Ordering registrations from the recorded clients (and any legacy shell block), and clears `ORDERING_MCP_KEY` from `.env` (their project stays set). It prints the key's name and a Dashboard link. **The key still works until they revoke it there**, so tell them to revoke it if they're disconnecting because of a leak, a lost device, or offboarding.
+This removes unchanged Ordering registrations from the recorded clients (and any legacy shell block), and clears both `ORDERING_MCP_KEY` and `ORDERING_API_KEY` from `.env` (their project stays set). It prints the key's name and a Dashboard link. **The key still works until they revoke it there**, so tell them to revoke it if they're disconnecting because of a leak, a lost device, or offboarding.
 
 To connect again right after (a new key, or after revoking the old one):
 
 ```bash
-cd ~/ordering-dev-quickstart && ./ordering reset --client claude
+cd ~/ordering-dev-quickstart && ./ordering reset --client claude --install
 ```
 
 `reset` runs `logout` and then the same sign-in as step 2: expect another `TELL THE USER` block, and follow it the same way.
@@ -158,3 +164,5 @@ An interrupted dependency download is never marked ready. Rerun `./ordering inst
 Uninstall verifies removal of the launcher-owned OpenCode 2 runtime before removing its config. If runtime removal fails, the entry is kept for retry. Successfully removed clients are cleared from the registration record even when another client is still pending. Changed or unreadable entries remain untouched. Reload other running clients to drop their cached tools; server credentials remain valid until revoked in the Dashboard.
 
 After OpenCode registration, the installer explicitly reconnects its Ordering process so a renewed key is loaded even when the command did not change. Other running clients require their normal reload after key renewal.
+
+Without `.clients/installed.json`, legacy native Ordering entries are preserved and uninstall/logout/reset stop for review. Resolve only the intended entry in the client; never delete another session’s server to force success.

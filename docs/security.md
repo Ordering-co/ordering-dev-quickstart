@@ -18,12 +18,12 @@ What this repo does about it:
 - Never paste a key into an AI chat, an issue, a screenshot or a support ticket. The chat transcript keeps it.
 - Use read-scoped MCP keys for everyday work, and short expiries for write keys.
 - Keep API keys on servers. Never ship them in a website, a mobile app or any client-side code.
-- **API keys have no scope and never expire.** They act with your full permissions until you revoke them in the Dashboard (Settings → Developers → API Keys). Scoped, revocable API keys are planned.
+- **API keys have no scope and never expire.** They act with your full permissions until you revoke them in the Dashboard (Settings → Developers → API Keys). MCP read does not limit a REST key. Uncheck the REST option during pairing if it is not needed; revoke REST and MCP credentials independently in the Dashboard.
 
 ## If a key leaks
 
 1. Delete it in the Dashboard immediately: MCP keys in **Apps & developers → API & integrations → MCP**, API keys in **Developers → API Keys**.
-2. Create a replacement and update `.env`.
+2. Run `./ordering login --install` for a replacement, review permissions, wait for the terminal result and reload your client. For manual credentials, use the private editor opened by `./ordering init`. Never put a replacement in chat or command arguments.
 3. If it was committed to git, deleting the commit is not enough: the key is already exposed. Revoking it in step 1 is what protects you.
 4. Review recent activity in your project for changes you don't recognize.
 

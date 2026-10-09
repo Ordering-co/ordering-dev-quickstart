@@ -4,7 +4,7 @@ Connect your detected MCP clients to Ordering.co orders, businesses and reports.
 
 &nbsp;
 
-## 1 · Paste this into Claude Code or Codex
+## 1 · Paste this into your terminal AI agent
 
 ```text
 Connect me to Ordering.co: clone https://github.com/Finitless-com/ordering-dev-quickstart to ~/ordering-dev-quickstart (or pull it if I already have it), then read its SETUP.md and follow it step by step.
@@ -16,7 +16,7 @@ Connect me to Ordering.co: clone https://github.com/Finitless-com/ordering-dev-q
 
 ## 2 · Sign in when your agent gives you the link, and type the code it shows you
 
-Open the link, sign in with your Ordering.co **Dashboard** or **Billing** account, type the code, and click **Connect**.
+Open the link, sign in with your Ordering.co **Dashboard** or **Accounts (Billing)** account, type the code, and click **Connect**.
 
 <sub>You never copy or paste a key. Read access is the default: your agent can look at your data, not change it. Only administrators and business managers can connect. The page also gives your agent the REST API by default (full access, no expiry); uncheck it if you only want the MCP.</sub>
 
@@ -34,7 +34,11 @@ The browser confirms credential delivery. Wait for the terminal to verify the MC
 
 With a write key you can also change an order's status or open/close a business; your agent asks before every change.
 
-More ideas: [prompts/](prompts/)
+The server exposes a selected catalog, subject to your role, scope and allowed fields; it is not the entire REST API. MCP read does not restrict the separate REST credential.
+
+More ideas: [prompts/](prompts/) · [Clients and command reference](docs/clients.md) · [Optional plugin and skill](https://github.com/Finitless-com/ordering-mcp-plugin) · [Complete MCP guide](https://docs.ordering.co/docs/developers/mcp/)
+
+Repository access is required while this quickstart and the plugin are private. If GitHub refuses access, use the manual connection guide or ask for access; signing in to Ordering does not grant GitHub membership.
 
 &nbsp;
 
