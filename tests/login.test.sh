@@ -24,7 +24,7 @@ check() { if eval "$2"; then echo "ok   - $1"; pass=$((pass+1)); else echo "FAIL
 
 fresh() {  # a clean copy of the repo, without .env or .login
   rm -rf "$WORK/repo"; mkdir -p "$WORK/repo"
-  (cd "$REPO" && tar --exclude .git --exclude .env --exclude .login --exclude spec -cf - .) | (cd "$WORK/repo" && tar -xf -)
+  (cd "$REPO" && tar --exclude .git --exclude .env --exclude .login --exclude .clients --exclude node_modules --exclude spec -cf - .) | (cd "$WORK/repo" && tar -xf -)
 }
 start() {  # sets LINK and CODE
   "$WORK/repo/ordering" login start --client claude > "$WORK/start.out" 2>&1
@@ -56,6 +56,16 @@ check "the key is never printed" '! grep -q "$KEY" "$WORK/start.out" "$WORK/wait
 check "the key name is printed for revocation" 'grep -q "Claude Code · " "$WORK/wait.out"'
 ID="$(printf '%s' "$LINK" | sed 's/.*#\([0-9a-f]*\)\..*/\1/')"
 check "a second claim is refused (404)" '[ "$(curl -s -o /dev/null -w %{http_code} -X POST "$CONNECT/connect/api/pairings/$ID/claim" -H "Content-Type: application/json" -d "{\"claim_secret\":\"$(printf %064d 0)\"}")" = 404 ]'
+
+# Probe the real stdio-to-HTTP launcher without inheriting the key or Node PATH.
+if [ -f "$REPO/.clients/node_modules/mcp-remote/dist/proxy.js" ]; then
+  mkdir -p "$WORK/repo/.clients"
+  command -v node > "$WORK/repo/.clients/node-path"
+  ln -s "$REPO/.clients/node_modules" "$WORK/repo/.clients/node_modules"
+  node "$WORK/repo/scripts/client-installer.mjs" "$WORK/repo" probe > "$WORK/probe.out" 2>&1
+  check "desktop-safe launcher initializes, lists tools and calls whoami" 'grep -q "MCP verified through the desktop-safe launcher" "$WORK/probe.out"'
+  check "launcher never prints the key" '! grep -q "$KEY" "$WORK/probe.out"'
+fi
 
 echo "# wrong deliver token"
 fresh; start
@@ -199,6 +209,72 @@ rc=0
 "$WORK/repo/ordering" api GET /orders '{"x":1}' < /dev/null > "$WORK/api-getbody.out" 2> "$WORK/api-getbody.err" || rc=$?
 check "api GET with a body is refused" '[ "$rc" != 0 ]'
 check "the refusal explains GET takes no body" 'grep -qi "GET does not take a body" "$WORK/api-getbody.err"'
+
+echo "# login --install completion and partial failure"
+fresh
+"$WORK/repo/ordering" login start --client codex --install > "$WORK/start.out" 2>&1
+LINK="$(grep -o 'http://[^ ]*/connect/#[0-9a-f.]*' "$WORK/start.out")"
+CODE="$(sed -n 's/.*type this code: \([0-9A-F-]*\).*/\1/p' "$WORK/start.out")"
+check "--install is persisted until login delivery completes" '[ -f "$WORK/repo/.login/install" ]'
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > "$WORK/page.out"
+mkdir -p "$WORK/node-stub" "$WORK/repo/.clients/node_modules/mcp-remote/dist" "$WORK/repo/.clients/node_modules/add-mcp/dist" "$WORK/repo/.clients/node_modules/jsonc-parser/lib/umd"
+cp "$REPO/client-installer/package.json" "$REPO/client-installer/package-lock.json" "$WORK/repo/.clients/"
+touch "$WORK/repo/.clients/node_modules/mcp-remote/dist/proxy.js" "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js" "$WORK/repo/.clients/node_modules/jsonc-parser/lib/umd/main.js"
+cp "$REPO/client-installer/package-lock.json" "$WORK/repo/.clients/runtime-ready"
+cat > "$WORK/node-stub/node" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = -e ]; then exit 0; fi
+printf '%s\n' "$3" >> "$ORDERING_CLIENT_TEST_CALLS"
+if [ "$3" = install ] && [ "${ORDERING_CLIENT_TEST_FAIL:-}" = 1 ]; then exit 1; fi
+STUB
+chmod +x "$WORK/node-stub/node"
+rc=0
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_CALLS="$WORK/install-calls" ORDERING_LOGIN_SKIP_DOCTOR= \
+  "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/install-login.out" 2>&1 || rc=$?
+check "login --install runs probe, install and read-back before completion" '[ "$rc" = 0 ] && [ "$(tr "\n" " " < "$WORK/install-calls")" = "probe install status " ]'
+check "successful login --install reports final installation success" 'grep -q "MCP authenticated, launcher verified, and detected clients registered" "$WORK/install-login.out"'
+start
+# Flag this second pairing as an install; the following failure must not undo a valid login.
+touch "$WORK/repo/.login/install"
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > "$WORK/page.out"
+rc=0
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_CALLS="$WORK/install-failed-calls" ORDERING_CLIENT_TEST_FAIL=1 ORDERING_LOGIN_SKIP_DOCTOR= \
+  "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/install-failed.out" 2>&1 || rc=$?
+check "registration failure returns nonzero after successful credential delivery" '[ "$rc" != 0 ] && grep -q "Signed in as" "$WORK/install-failed.out"'
+check "registration failure keeps the saved credentials" 'grep -qx "ORDERING_MCP_KEY=$KEY" "$WORK/repo/.env"'
+check "registration failure does not claim complete installation" '! grep -q "MCP authenticated, launcher verified, and detected clients registered" "$WORK/install-failed.out"'
+
+echo "# interrupted dependency preparation and repair"
+cat > "$WORK/node-stub/npm" <<'STUB'
+#!/usr/bin/env bash
+printf 'called\n' >> "$ORDERING_CLIENT_TEST_NPM_CALLS"
+# Simulate an interrupted npm ci that has copied some files but cannot mark readiness.
+if [ "${ORDERING_CLIENT_TEST_NPM_FAIL:-}" = 1 ]; then exit 1; fi
+if [ "${ORDERING_CLIENT_TEST_NPM_INCOMPLETE:-}" = 1 ]; then exit 0; fi
+if [ "$1" = ci ] && [ "$2" = --prefix ]; then
+  mkdir -p "$3/node_modules/mcp-remote/dist" "$3/node_modules/add-mcp/dist" "$3/node_modules/jsonc-parser/lib/umd"
+  touch "$3/node_modules/mcp-remote/dist/proxy.js" "$3/node_modules/add-mcp/dist/lib.js" "$3/node_modules/jsonc-parser/lib/umd/main.js"
+fi
+STUB
+chmod +x "$WORK/node-stub/npm"
+rm -f "$WORK/repo/.clients/runtime-ready"
+rc=0
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" ORDERING_CLIENT_TEST_NPM_FAIL=1 \
+  "$WORK/repo/ordering" prepare > "$WORK/prepare-failed.out" 2>&1 || rc=$?
+check "failed npm ci never marks runtime as ready" '[ "$rc" != 0 ] && [ ! -e "$WORK/repo/.clients/runtime-ready" ]'
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" \
+  "$WORK/repo/ordering" prepare > "$WORK/prepare-retried.out" 2>&1
+check "retry repairs a partial runtime even when a proxy file already exists" '[ "$(wc -l < "$WORK/npm-calls" | tr -d " ")" = 2 ] && cmp -s "$REPO/client-installer/package-lock.json" "$WORK/repo/.clients/runtime-ready"'
+rm -f "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js"
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" \
+  "$WORK/repo/ordering" prepare > "$WORK/prepare-missing-module.out" 2>&1
+check "missing client adapter triggers runtime repair" '[ "$(wc -l < "$WORK/npm-calls" | tr -d " ")" = 3 ] && [ -f "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js" ]'
+
+rm -f "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js"
+rc=0
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" ORDERING_CLIENT_TEST_NPM_INCOMPLETE=1 \
+  "$WORK/repo/ordering" prepare > "$WORK/prepare-incomplete.out" 2>&1 || rc=$?
+check "a successful npm exit without required modules is not readiness" '[ "$rc" != 0 ] && [ ! -e "$WORK/repo/.clients/runtime-ready" ]'
 
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }

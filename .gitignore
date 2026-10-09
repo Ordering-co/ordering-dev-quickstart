@@ -17,3 +17,7 @@ Thumbs.db
 
 # ./ordering api audit log (method, path and body hash, no secrets)
 .api-audit.log
+
+# Locked installer runtime and private client configuration backups
+.clients/
+node_modules/

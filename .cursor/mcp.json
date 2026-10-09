@@ -1,10 +1,12 @@
 {
   "mcpServers": {
     "ordering": {
-      "url": "https://api.ordering.co/mcp/${env:ORDERING_PROJECT}",
-      "headers": {
-        "Authorization": "Bearer ${env:ORDERING_MCP_KEY}"
-      }
+      "type": "stdio",
+      "command": "/bin/bash",
+      "args": [
+        "${workspaceFolder}/ordering",
+        "mcp"
+      ]
     }
   }
 }

@@ -12,7 +12,8 @@ A developer asked you to connect them to the Ordering.co MCP. Follow these steps
 ## 0. Check where you are running
 
 - **Native Windows (PowerShell or cmd):** stop. Tell them to run their agent inside WSL or Git Bash and paste the prompt again.
-- **Codex:** this setup needs network access, plus write access outside the workspace (`~/.zshrc`, `~/.codex/config.toml`). Ask for both before step 2.
+- This setup registers Ordering globally in detected MCP clients, including desktop apps. Before step 2, explain the scope: a login plus client configuration, using the scope the person chooses. In Codex, request network and outside-workspace writes through its approval system as needed.
+- Global installation requires Node.js 22+ and npm. Detect those before starting. If missing, the login can still save credentials, but do not promise installed clients. Do not install unrelated software or approve write tools automatically.
 - **A remote or cloud session works too.** The developer opens the link on any computer where they can sign in.
 
 ## 1. Get the repo
@@ -34,7 +35,7 @@ Your shell's working folder may reset between commands. **Start every command wi
 Use `--client claude` if you are Claude Code, or `--client codex` if you are Codex.
 
 ```bash
-cd ~/ordering-dev-quickstart && ./ordering login start --client claude
+cd ~/ordering-dev-quickstart && ./ordering login start --client claude --install
 ```
 
 **The developer cannot see your tool output.** It prints a `TELL THE USER` block with a link and a code, and does not open a browser itself. Your reply MUST include both the link and the code from that block, in the same message, adapted to their language. Do not open the browser yourself: the developer opens the link.
@@ -51,7 +52,10 @@ Then wait for them:
 cd ~/ordering-dev-quickstart && ./ordering login wait
 ```
 
-- **`Signed in. Key "…" saved`:** go to step 3. `wait` already ran `doctor`, so read its output.
+- **`Signed in … Key "…" saved`:** authentication completed. With `--install`, `wait` then verifies the MCP launcher and registers detected clients. Read the **final process result**, not just the first success line.
+- If your tool returned a running process/session ID, keep it and collect its completion even when the conversation turns to another issue. A browser confirmation does not cancel the pending terminal result. If the person says they completed the page, resume that process before starting a new pairing.
+- **`MCP authenticated, launcher verified, and detected clients registered`:** installation completed. Go to step 3.
+- A nonzero install result after credentials were saved means **authentication succeeded, installation is partial**. Explain the specific client failure and rerun `./ordering install`; never repeat login solely for a missing registration.
 - **`Still waiting`:** they haven't finished yet. Run `login wait` again. The link lasts 10 minutes.
 - **`expired`, `cancelled` or `failed`:** run `login start` again.
 - **`could not be verified`:** someone else's key arrived. Nothing was saved. Tell the developer to revoke unknown keys in the Dashboard (MCP settings), then run `login start` again.
@@ -75,27 +79,23 @@ Continue only if `doctor` shows **`✔ Connected as …`** in the MCP section an
 - **`✘` lines:** explain each one in one sentence with its fix from `docs/troubleshooting.md`.
 - **`Scope: write`:** it works, but recommend Read for everyday use.
 
-## 4. Install it for every folder
+## 4. Verify registration in every detected client
 
-First tell them that this step will:
-- in Claude Code, install the official Ordering plugin (the MCP server plus a skill that knows the platform), with the key stored in the system keychain;
-- in Codex, add the `ordering` server for all their folders;
-- add a small marked block to their shell startup file (for example `~/.zshrc`), so new terminals load the key from `.env`;
-- be fully reversible with `./ordering uninstall`.
+`login start --install` already chains installation after credential delivery. The installer uses the locked `add-mcp` adapter to detect global clients and register the same Ordering stdio launcher in each native configuration. It tests that launcher with `initialize`, `tools/list` and `whoami`, including a desktop-like environment without shell key variables.
 
-Then run:
-
-```bash
-cd ~/ordering-dev-quickstart && ./ordering install
-```
-
-If it prints `✘` or an unknown-shell warning, show them the manual command it printed.
+- Run `cd ~/ordering-dev-quickstart && ./ordering clients` and require every registered client to pass read-back verification.
+- If `wait` did not install, or any registration failed, run `cd ~/ordering-dev-quickstart && ./ordering install`, then check its complete output and exit status.
+- Report each detected client's result. Clients not detected are not installed. Pi needs its MCP adapter and is reported separately; never describe it as connected.
+- Existing unrelated servers and settings stay in place. Another server named `ordering` with an unrelated endpoint is a conflict; do not delete or replace it.
+- Each client launches `./ordering mcp`, which reads credentials through the existing helper. Configs hold an absolute command path, never a literal key. Applications opened from the Dock do not require a shell-exported key. Keep this checkout in its installation location; moving it requires rerunning install.
+- Running clients still need restart/reload and may ask for trust when they discover a new MCP. Do not bypass that trust prompt or claim tools are live in the current chat before observing them.
+- Undo registration with `./ordering uninstall`. It removes only unchanged entries owned by this launcher and preserves `.env`.
 
 ## 5. Finish
 
 This is the moment they should feel it working: give them a concrete menu, not just an invitation to ask something. Tell them, briefly and in their language, as ready-to-copy lines (keep the whole menu to about 8 lines):
 
-> Ready. Close this session, open a **new** terminal, start `claude` or `codex`, and try one of these:
+> Ready. Restart your running client (or reload its MCP settings), open a new chat, and try one of these:
 >
 > - Who am I in Ordering?
 > - How many orders came in today, by status?
@@ -112,12 +112,12 @@ If `doctor` in step 3 showed **`Scope: write`**, also offer 2-3 of these, and sa
 
 Then add:
 
-> Your key expires in <N> days. To renew it, run `~/ordering-dev-quickstart/ordering login`, sign in again and open a new terminal.
+> Your key expires in <N> days. To renew it, run `~/ordering-dev-quickstart/ordering login --install`, sign in again and reload your client.
 
 Take `<N>` and the scope from the `doctor` output in step 3.
 
 Add only if it applies:
-- **They use the desktop app** (started from the Dock or Start menu): it doesn't see the key. Start it from a terminal, or see `docs/manual-setup.md`.
+- **Desktop app:** restart/reload to discover the new server. The global launcher loads the key itself; no terminal launch is required. Native Windows still uses the documented WSL path.
 - **Cursor or VS Code:** `docs/manual-setup.md`.
 - **They want to call the REST API from code:** `docs/rest-api.md`.
 
@@ -137,7 +137,7 @@ If they ask to disconnect, log out, start over, or say their key stopped working
 cd ~/ordering-dev-quickstart && ./ordering logout
 ```
 
-This removes the `ordering` server from Claude Code and Codex, removes the shell block, and clears `ORDERING_MCP_KEY` from `.env` (their project stays set). It prints the key's name and a Dashboard link. **The key still works until they revoke it there**, so tell them to revoke it if they're disconnecting because of a leak, a lost device, or offboarding.
+This removes unchanged Ordering registrations from the recorded clients (and any legacy shell block), and clears `ORDERING_MCP_KEY` from `.env` (their project stays set). It prints the key's name and a Dashboard link. **The key still works until they revoke it there**, so tell them to revoke it if they're disconnecting because of a leak, a lost device, or offboarding.
 
 To connect again right after (a new key, or after revoking the old one):
 
@@ -146,3 +146,15 @@ cd ~/ordering-dev-quickstart && ./ordering reset --client claude
 ```
 
 `reset` runs `logout` and then the same sign-in as step 2: expect another `TELL THE USER` block, and follow it the same way.
+
+### OpenCode 2 activation
+
+The installer selects the native `mcp.servers` schema for OpenCode 2, preserving comments and unrelated config. It also registers Ordering in the native runtime at this installation location through OpenCode’s official API, then requires `ordering — connected` in its status. This avoids restarting the shared service or interrupting other sessions. Global config remains available to other project locations; existing chats may still need their normal MCP reload. A native activation failure is reported as partial installation, even when the config file is correct.
+
+### Recovering partial installation
+
+An interrupted dependency download is never marked ready. Rerun `./ordering install`: it repairs missing runtime modules before probing or registering clients. A disabled Ordering entry is preserved and reported as incomplete; enable it explicitly in that client before retrying. Detecting only a client that needs an additional adapter does not count as successful installation.
+
+Uninstall verifies removal of the launcher-owned OpenCode 2 runtime before removing its config. If runtime removal fails, the entry is kept for retry. Successfully removed clients are cleared from the registration record even when another client is still pending. Changed or unreadable entries remain untouched. Reload other running clients to drop their cached tools; server credentials remain valid until revoked in the Dashboard.
+
+After OpenCode registration, the installer explicitly reconnects its Ordering process so a renewed key is loaded even when the command did not change. Other running clients require their normal reload after key renewal.

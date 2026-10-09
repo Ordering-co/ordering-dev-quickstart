@@ -6,7 +6,10 @@
 #                                USER block verbatim; "login code" re-shows the current code)
 #   ./ordering init [SERVER_URL] Create .env, set your project from the Server URL, open the file
 #   ./ordering doctor            Check your project, MCP key and API key
-#   ./ordering install           Make the Ordering MCP available in Claude Code and Codex everywhere
+#   ./ordering install           Register and verify Ordering in detected MCP clients globally
+#   ./ordering prepare           Prepare the locked launcher without global registration
+#   ./ordering clients           Check registered clients
+#   ./ordering mcp               Desktop-safe stdio launcher (used by clients)
 #   ./ordering uninstall         Undo install (your key in .env is left alone)
 #   ./ordering logout            Disconnect here: remove the key from .env, Claude Code and Codex
 #                                (alias: disconnect; the key still works until you revoke it)
@@ -311,13 +314,13 @@ cmd_doctor() {
 
   title "Tools"
   local found=""
-  for t in claude codex cursor code; do have "$t" && found="$found $t"; done
-  if [ -n "$found" ]; then ok "Found:$found"; else warn "No agent or editor CLI found (claude, codex, cursor, code)"; fi
+  for t in claude codex opencode cursor code; do have "$t" && found="$found $t"; done
+  if [ -n "$found" ]; then ok "Found:$found"; else warn "No agent or editor CLI found (claude, codex, opencode, cursor, code)"; fi
   have jq || have python3 || warn "Install jq or python3 for full doctor output"
 
   echo
   if [ "$problems" -eq 0 ]; then
-    printf '%sReady.%s Next: ./ordering install   (or ./ordering claude to use it only in this folder)\n' "$C_OK" "$C_0"
+    printf '%sConnection verified.%s Client registration: ./ordering clients   (install or repair: ./ordering install)\n' "$C_OK" "$C_0"
   else
     printf '%s%d problem(s) found.%s See docs/troubleshooting.md\n' "$C_ERR" "$problems" "$C_0"
     exit 1
@@ -519,6 +522,8 @@ cmd_login_start() {
 
 cmd_login_wait() {
   local timeout="${1:-540}"
+  local install_after_login=0
+  [ ! -f "$LOGIN_DIR/install" ] || install_after_login=1
   [ -f "$LOGIN_DIR/id" ] || die "No sign-in in progress. Run ./ordering login first."
   local old_project="${ORDERING_PROJECT:-}" old_api_key="${ORDERING_API_KEY:-}"
   local base id secret expires deadline now
@@ -662,6 +667,7 @@ cmd_login_wait() {
   key=""
   if [ -n "${ORDERING_LOGIN_SKIP_DOCTOR:-}" ]; then return 0; fi
   cmd_doctor
+  if [ "$install_after_login" = 1 ]; then cmd_install; fi
 }
 
 # Re-prints the current code and the minutes left, without the link and without
@@ -683,22 +689,33 @@ cmd_login_code() {
 }
 
 cmd_login() {
-  local sub="" client_arg="" timeout=""
+  local sub="" client_arg="" timeout="" install_after=0
   while [ $# -gt 0 ]; do
     case "$1" in
       start|wait|code) sub="$1" ;;
       --client) client_arg="${2:-}"; shift ;;
       --client=*) client_arg="${1#--client=}" ;;
+      --install) install_after=1 ;;
       --timeout) timeout="${2:-}"; shift ;;
-      *) die "Usage: ./ordering login [start|wait|code] [--client claude|codex]" ;;
+      *) die "Usage: ./ordering login [start|wait|code] [--client claude|codex] [--install]" ;;
     esac
     shift
   done
   case "$sub" in
-    start) cmd_login_start "$(login_client "$client_arg")" ;;
-    wait) cmd_login_wait "${timeout:-540}" ;;
+    start)
+      cmd_login_start "$(login_client "$client_arg")"
+      [ "$install_after" = 0 ] || touch "$LOGIN_DIR/install"
+      ;;
+    wait)
+      if [ "$install_after" = 1 ] && [ -d "$LOGIN_DIR" ]; then touch "$LOGIN_DIR/install"; fi
+      cmd_login_wait "${timeout:-540}"
+      ;;
     code) cmd_login_code ;;
-    "") cmd_login_start "$(login_client "$client_arg")"; cmd_login_wait "${timeout:-$LOGIN_TTL}" ;;
+    "")
+      cmd_login_start "$(login_client "$client_arg")"
+      [ "$install_after" = 0 ] || touch "$LOGIN_DIR/install"
+      cmd_login_wait "${timeout:-$LOGIN_TTL}"
+      ;;
   esac
 }
 
@@ -744,25 +761,6 @@ claude_plugin_state() {
   fi
 }
 
-install_claude_plugin() {
-  [ -z "${ORDERING_NO_PLUGIN:-}" ] || return 1
-  case "$(claude_plugin_state)" in
-    available)
-      claude plugin marketplace add "$PLUGIN_REPO" >/dev/null 2>&1 || return 1
-      claude plugin install "$PLUGIN_ID" --config "project=$ORDERING_PROJECT" >/dev/null 2>&1 || return 1
-      ;;
-    installed) ;;
-    conflict)
-      hint "Claude Code already has another marketplace named '$PLUGIN_MARKETPLACE', so the Ordering plugin can't be added. Using a plain MCP server instead."
-      return 1 ;;
-    *) return 1 ;;
-  esac
-  printf '{"project":"%s","mcp_key":"%s"}' "$ORDERING_PROJECT" "$ORDERING_MCP_KEY" \
-    | claude plugin configure "$PLUGIN_ID" --values-stdin >/dev/null 2>&1 || return 1
-  # The plugin brings its own server; drop a plain one from an earlier install.
-  claude mcp remove ordering -s user >/dev/null 2>&1 || true
-  ok "Claude Code: Ordering plugin installed (MCP server + Ordering skill, key in your system keychain)"
-}
 
 # Prints the MCP variables from .env as shell exports, for your shell profile.
 # The REST API key is never exported this way.
@@ -774,53 +772,74 @@ cmd_shell_env() {
   return 0
 }
 
+# Dependencies are locked separately; the login/API helper itself remains bash-only.
+client_runtime() {
+  if ! have node || ! have npm; then
+    die "Global multi-client setup requires Node.js 22+ and npm. Login is saved; install Node, then rerun ./ordering install."
+  fi
+  node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' || die "Node.js 22+ is required."
+  mkdir -p "$ROOT/.clients"
+  chmod 700 "$ROOT/.clients"
+  if ! cmp -s "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/runtime-ready" ||
+    [ ! -f "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" ] ||
+    [ ! -f "$ROOT/.clients/node_modules/add-mcp/dist/lib.js" ] ||
+    [ ! -f "$ROOT/.clients/node_modules/jsonc-parser/lib/umd/main.js" ]; then
+    rm -f "$ROOT/.clients/runtime-ready"
+    cp "$ROOT/client-installer/package.json" "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/"
+    npm ci --prefix "$ROOT/.clients" --ignore-scripts --no-audit --no-fund >&2 || die "Could not prepare the client installer. Login is saved; rerun ./ordering install."
+    if [ ! -f "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" ] ||
+      [ ! -f "$ROOT/.clients/node_modules/add-mcp/dist/lib.js" ] ||
+      [ ! -f "$ROOT/.clients/node_modules/jsonc-parser/lib/umd/main.js" ]; then
+      die "Client runtime is incomplete. Login is saved; rerun ./ordering install."
+    fi
+    cp "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/runtime-ready"
+  fi
+  command -v node > "$ROOT/.clients/node-path"
+  chmod 600 "$ROOT/.clients/node-path"
+}
+
+client_action() {
+  [ -f "$ROOT/.clients/node-path" ] || die "Clients are not installed. Run ./ordering install."
+  local node_path; node_path="$(cat "$ROOT/.clients/node-path")"
+  "$node_path" "$ROOT/scripts/client-installer.mjs" "$ROOT" "$1" "${ORDERING_PROJECT:-}"
+}
+
+cmd_mcp() {
+  require_project
+  [ -n "${ORDERING_MCP_KEY:-}" ] || die "No MCP key. Run ./ordering login."
+  [ -f "$ROOT/.clients/node-path" ] || die "MCP launcher is not installed. Run ./ordering install."
+  local node_path; node_path="$(cat "$ROOT/.clients/node-path")"
+  [ -x "$node_path" ] || die "The Node runtime moved. Rerun ./ordering install."
+  # The inherited REST key must never reach MCP clients or their proxy.
+  unset ORDERING_API_KEY
+  rm -rf "$TMP_DIR"
+  # Placeholder stays literal in argv; mcp-remote resolves it from the environment.
+  # shellcheck disable=SC2016
+  set -- --transport http-only --header 'Authorization:Bearer ${ORDERING_MCP_KEY}' --silent
+  case "$API_HOST" in http://127.0.0.1:*) set -- "$@" --allow-http ;; esac
+  exec "$node_path" "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" "$(mcp_url)" "$@"
+}
+
 cmd_install() {
   require_project
-  [ -n "${ORDERING_MCP_KEY:-}" ] || die "ORDERING_MCP_KEY is empty. Add it to .env, then run ./ordering doctor."
-
-  title "Shell"
-  local profile; profile="$(shell_profile)"
-  if [ -n "$profile" ]; then
-    remove_profile_block "$profile"
-    {
-      echo "$MARK_BEGIN"
-      echo "# Loads your Ordering.co MCP key from $ROOT/.env. Remove with: $ROOT/ordering uninstall"
-      echo "[ -x \"$ROOT/ordering\" ] && eval \"\$(\"$ROOT/ordering\" shell-env)\""
-      echo "$MARK_END"
-    } >> "$profile"
-    ok "New terminals load your MCP key from .env (added to $profile)"
-  else
-    warn "Unknown shell '${SHELL:-}'. Add this to your shell startup file yourself:"
-    hint "eval \"\$(\"$ROOT/ordering\" shell-env)\""
+  [ -n "${ORDERING_MCP_KEY:-}" ] || die "ORDERING_MCP_KEY is empty. Run ./ordering login."
+  title "Verify the connection"
+  mcp_whoami "$ORDERING_PROJECT" "$ORDERING_MCP_KEY"
+  if [ "$HTTP_CODE" != 200 ] || [ "$(json_get "$MCP_BODY" result.structuredContent.project)" != "$ORDERING_PROJECT" ]; then
+    die "MCP verification failed; no client configuration changed."
   fi
-
-  title "Agents"
-  local any=""
-  if have claude && install_claude_plugin; then
-    any=1
-  elif have claude; then
-    claude mcp remove ordering -s user >/dev/null 2>&1 || true
-    # The single quotes are intended: Claude Code expands ${ORDERING_MCP_KEY} when it connects.
-    # shellcheck disable=SC2016
-    if claude mcp add --transport http --scope user ordering "$(mcp_url)" \
-         --header 'Authorization: Bearer ${ORDERING_MCP_KEY}' >/dev/null 2>&1; then
-      ok "Claude Code: 'ordering' added for all your folders"; any=1
-    else
-      fail "Claude Code: could not add the server. Run: claude mcp add --transport http --scope user ordering $(mcp_url) --header 'Authorization: Bearer \${ORDERING_MCP_KEY}'"
-    fi
-  fi
-  if have codex; then
-    codex mcp remove ordering >/dev/null 2>&1 || true
-    if codex mcp add ordering --url "$(mcp_url)" --bearer-token-env-var ORDERING_MCP_KEY >/dev/null 2>&1; then
-      ok "Codex: 'ordering' added"; any=1
-    else
-      fail "Codex: could not add the server. Run: codex mcp add ordering --url $(mcp_url) --bearer-token-env-var ORDERING_MCP_KEY"
-    fi
-  fi
-  [ -n "$any" ] || warn "Neither Claude Code nor Codex was found. Cursor and VS Code: see docs/manual-setup.md"
-
+  ok "Authenticated on project '$ORDERING_PROJECT'"
+  unset ORDERING_API_KEY
+  client_runtime
+  title "Verify the desktop-safe MCP launcher"
+  client_action probe || die "MCP launcher failed. No client configuration changed."
+  title "Register detected clients globally"
+  client_action install || die "Some clients were not registered. Review the individual results; do not treat this as complete."
+  title "Verify registrations"
+  client_action status || die "Some registrations could not be verified."
   echo
-  printf '%sDone.%s Open a NEW terminal, start claude or codex, and ask: "Who am I in Ordering?"\n' "$C_OK" "$C_0"
+  ok "MCP authenticated, launcher verified, and detected clients registered."
+  hint "Restart running clients or reload their MCP settings, then ask: Who am I in Ordering?"
 }
 
 # Removes the shell integration and the 'ordering' server from Claude Code and
@@ -840,8 +859,15 @@ remove_mcp_registrations() {
 }
 
 cmd_uninstall() {
-  remove_mcp_registrations
-  ok "Your .env and your keys were not touched. Delete keys you no longer use in the Dashboard."
+  if [ -f "$ROOT/.clients/installed.json" ]; then
+    client_action uninstall || die "Some changed registrations were preserved; review the results."
+    local profile; profile="$(shell_profile)"
+    [ -z "$profile" ] || remove_profile_block "$profile"
+  else
+    remove_mcp_registrations
+  fi
+  ok "Your .env and your keys were not touched. Revoke unwanted keys in the Dashboard."
+  hint "Reload running clients to drop cached tools and credentials."
 }
 
 # True if this Claude Code CLI's 'plugin' subcommand has an 'uninstall' action.
@@ -867,7 +893,7 @@ cmd_logout() {
   fi
 
   title "Shell and agents"
-  remove_mcp_registrations
+  cmd_uninstall
   if have claude && [ "$(claude_plugin_state)" = "installed" ]; then
     if claude_plugin_can_uninstall; then
       if claude plugin uninstall "$PLUGIN_ID" >/dev/null 2>&1; then
@@ -1054,6 +1080,9 @@ case "$cmd" in
   logout|disconnect) cmd_logout ;;
   reset)         cmd_reset "$@" ;;
   shell-env)     cmd_shell_env ;;
+  mcp)           cmd_mcp ;;
+  clients)       client_action status ;;
+  prepare)       client_runtime ;;
   claude)        cmd_claude "$@" ;;
   codex)         cmd_codex "$@" ;;
   cursor|code)   cmd_editor "$cmd" "$@" ;;
