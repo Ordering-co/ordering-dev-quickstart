@@ -1074,6 +1074,7 @@ cmd="${1:-help}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   login)         cmd_login "$@" ;;
   init)          cmd_init "$@" ;;
+  marketplace-config) node "$ROOT/scripts/marketplace-config.mjs" "${1:-}" ;;
   doctor)        cmd_doctor ;;
   install)       cmd_install ;;
   uninstall)     cmd_uninstall ;;
