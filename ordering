@@ -774,7 +774,9 @@ cmd_shell_env() {
 
 # Dependencies are locked separately; the login/API helper itself remains bash-only.
 client_runtime() {
-  have node && have npm || die "Global multi-client setup requires Node.js 22+ and npm. Login is saved; install Node, then rerun ./ordering install."
+  if ! have node || ! have npm; then
+    die "Global multi-client setup requires Node.js 22+ and npm. Login is saved; install Node, then rerun ./ordering install."
+  fi
   node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' || die "Node.js 22+ is required."
   mkdir -p "$ROOT/.clients"
   chmod 700 "$ROOT/.clients"
@@ -813,7 +815,9 @@ cmd_install() {
   [ -n "${ORDERING_MCP_KEY:-}" ] || die "ORDERING_MCP_KEY is empty. Run ./ordering login."
   title "Verify the connection"
   mcp_whoami "$ORDERING_PROJECT" "$ORDERING_MCP_KEY"
-  [ "$HTTP_CODE" = 200 ] && [ "$(json_get "$MCP_BODY" result.structuredContent.project)" = "$ORDERING_PROJECT" ] || die "MCP verification failed; no client configuration changed."
+  if [ "$HTTP_CODE" != 200 ] || [ "$(json_get "$MCP_BODY" result.structuredContent.project)" != "$ORDERING_PROJECT" ]; then
+    die "MCP verification failed; no client configuration changed."
+  fi
   ok "Authenticated on project '$ORDERING_PROJECT'"
   unset ORDERING_API_KEY
   client_runtime

@@ -2,6 +2,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 
@@ -32,7 +33,9 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
     else text = JSON.stringify({ preference: 'keep', [name === 'vscode' ? 'servers' : 'mcpServers']: { other: { command: 'other-command' } } });
     writeFileSync(join(work, name + '.config'), text);
   }
-  const run = action => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8' });
+  const bin = join(work, 'bin'); mkdirSync(bin);
+  writeFileSync(join(bin, 'opencode'), '#!/bin/sh\necho "opencode v${ORDERING_TEST_OPENCODE_VERSION:-1}.0.0"\n', { mode: 0o700 });
+  const run = (action, version = '1') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version } });
   let result = run('install');
   assert.equal(result.status, 0, result.stderr);
   assert.equal((result.stdout.match(/registered globally/g) ?? []).length, 6);
@@ -44,6 +47,12 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
   }
   assert.ok(readFileSync(join(work, 'opencode.config'), 'utf8').includes('keep this comment'));
   assert.ok(readFileSync(join(work, 'codex.config'), 'utf8').includes('keep-model'));
+  assert.equal(run('install', '2').status, 0, 'OpenCode 2 migration succeeds');
+  const jsonc = await import(pathToFileURL(join(deps, 'jsonc-parser/lib/umd/main.js')));
+  const modern = jsonc.parse(readFileSync(join(work, 'opencode.config'), 'utf8'));
+  assert.deepEqual(modern.mcp.servers.ordering.command, ['/bin/bash', join(work, 'ordering'), 'mcp']);
+  assert.equal(modern.mcp.ordering, undefined, 'legacy owned entry removed after migration');
+  assert.equal(modern.mcp.servers.ordering.enabled, undefined, 'no V1-only enabled field in V2');
   const beforeRepeat = names.map(name => readFileSync(join(work, name + '.config'), 'utf8'));
   assert.equal(run('install').status, 0, 'idempotent second install');
   assert.deepEqual(names.map(name => readFileSync(join(work, name + '.config'), 'utf8')), beforeRepeat, 'repeat install preserves exact existing entries');
@@ -59,5 +68,5 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
     assert.ok(!text.includes(join(work, 'ordering')), name + ': own registration removed');
     assert.ok(text.includes('other-command'), name + ': unrelated server kept on uninstall');
   }
-  console.log('PASS: six client schemas; repeat install; read-back; JSONC comments; unrelated settings; conflict refusal; safe uninstall; no secrets in configs.');
+  console.log('PASS: six client schemas; OpenCode 1/2 migration; repeat install; read-back; JSONC comments; unrelated settings; conflict refusal; safe uninstall; no secrets in configs.');
 } finally { rmSync(work, { recursive: true, force: true }); }

@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, copyFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const root = resolve(process.argv[2]);
 const action = process.argv[3];
@@ -14,6 +14,22 @@ const loadManifest = () => existsSync(manifestPath) ? JSON.parse(readFileSync(ma
 const saveManifest = value => writeFileSync(manifestPath, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
 const command = '/bin/bash';
 const args = [join(root, 'ordering'), 'mcp'];
+const opencodeVersion = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 5000 });
+const opencodeV2 = /\bv([2-9]|[1-9][0-9]+)\./.test(opencodeVersion.stdout ?? '');
+const jsonc = await import(pathToFileURL(join(runtime, 'node_modules/jsonc-parser/lib/umd/main.js')));
+const writeOpenCodeV2 = (path, existing) => {
+  let text = existsSync(path) ? readFileSync(path, 'utf8') : '{}';
+  const errors = [];
+  jsonc.parse(text, errors, { allowTrailingComma: true });
+  if (errors.length) return { success: false };
+  const value = { type: 'local', command: [command, ...args] };
+  if (existing?.config.enabled === false) value.disabled = true;
+  const options = { formattingOptions: { insertSpaces: true, tabSize: 2 } };
+  text = jsonc.applyEdits(text, jsonc.modify(text, ['mcp', 'servers', 'ordering'], value, options));
+  if (existing?.configKey === 'mcp') text = jsonc.applyEdits(text, jsonc.modify(text, ['mcp', 'ordering'], undefined, options));
+  writeFileSync(path, text, { mode: 0o600 });
+  return { success: true };
+};
 const owned = config => {
   const parts = Array.isArray(config.command) ? config.command : [config.command ?? config.cmd, ...(config.args ?? [])];
   return JSON.stringify(parts) === JSON.stringify([command, ...args]);
@@ -80,7 +96,7 @@ if (action === 'probe') {
     if (!row || row.error) { console.error(`  ✘ ${agents[name].displayName}: existing config could not be read; left unchanged.`); failures++; continue; }
     const existing = row.servers.find(server => server.serverName === 'ordering');
     if (existing && !sameServer(existing.config)) { console.error(`  ✘ ${row.displayName}: another server is named ordering; left unchanged.`); failures++; continue; }
-    if (existing && owned(existing.config)) {
+    if (existing && owned(existing.config) && !(name === 'opencode' && opencodeV2 && existing.configKey === 'mcp')) {
       if (!installed.includes(name)) installed.push(name);
       saveManifest(installed);
       console.log(`  ✔ ${row.displayName}: registered globally (existing entry preserved) · ${row.configPath}`);
@@ -93,7 +109,9 @@ if (action === 'probe') {
     const hadConfig = existsSync(row.configPath);
     const backup = join(runtime, 'backups', `${name}-${Date.now()}.config`);
     if (hadConfig) { copyFileSync(row.configPath, backup); chmodSync(backup, 0o600); }
-    const result = upsertServer(name, 'ordering', { command, args });
+    const result = name === 'opencode' && opencodeV2
+      ? writeOpenCodeV2(row.configPath, existing)
+      : upsertServer(name, 'ordering', { command, args });
     const fresh = (await readClients()).find(row => row.agentType === name)?.servers.find(server => server.serverName === 'ordering');
     if (!result.success || !fresh || !owned(fresh.config)) {
       if (hadConfig) copyFileSync(backup, row.configPath);
