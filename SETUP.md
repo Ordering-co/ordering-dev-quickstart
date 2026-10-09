@@ -132,7 +132,7 @@ Add only if it applies:
 `doctor` in step 3 will show `✔ API key … accepted` in its REST API section. From here on, reach the REST API only through `~/ordering-dev-quickstart/ordering api`, never with a raw `curl` using the key:
 
 - `GET` runs freely.
-- Before any other method, show the developer the exact method, path, a summary of the body, and the project, and wait for an explicit yes in the chat. Only then run the same request again with `--yes` (it can go anywhere after `api`), for example `./ordering api --yes POST /orders/123/status '{"status":5}'`.
+- Before any other method, show the developer the exact method, path, a summary of the body, and the project, and wait for an explicit yes in the chat. Only then run the same request again with `--yes` (it can go anywhere after `api`), for example `./ordering api --yes PUT '/orders/<order-id>' '{"status":7}'`.
 - When the MCP can't do something, find the operation in the OpenAPI spec (`./ordering spec`, then search `spec/openapi.json` with `jq`), explain it, and offer the REST call before running it.
 
 ## Disconnect or reset (only if the developer asks)

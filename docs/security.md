@@ -6,7 +6,7 @@ The REST API, the MCP server and the API Reference's **Test Request** button all
 
 What this repo does about it:
 
-- Every example is read-only.
+- HTTP data examples are read-only; the separate authentication example creates a session. Write prompts are templates: they require live operation discovery, a write scope where applicable, and explicit approval before execution.
 - `./ordering api` refuses `POST`, `PUT`, `PATCH` and `DELETE` unless a person confirms: either by typing the project ID at an interactive terminal, or by an agent passing `--yes` after the person approved that exact request in the chat (the agent prints a one-line `CONFIRMED` audit line to stderr first). This stops accidental writes from agents and scripts. It is a guardrail, not a security boundary: anyone holding the key can call the API directly.
 - Agents started with `./ordering claude` or `./ordering codex` don't receive the API key in their environment, and `.claude/settings.json` denies Claude Code access to `.env`. They can still use the REST API through `./ordering api`, which reads the key from `.env` itself at request time: the raw key never has to reach the agent's own environment.
 - `AGENTS.md` tells agents to change data only through the MCP, or through `./ordering api` after you approve the exact request in the chat, never with a raw `curl` and the key. Keep your client set to ask before tool calls that write.
