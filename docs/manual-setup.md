@@ -99,3 +99,5 @@ The installer selects the native `mcp.servers` schema for OpenCode 2, preserving
 An interrupted dependency download is never marked ready. Rerun `./ordering install`: it repairs missing runtime modules before probing or registering clients. A disabled Ordering entry is preserved and reported as incomplete; enable it explicitly in that client before retrying. Detecting only a client that needs an additional adapter does not count as successful installation.
 
 Uninstall verifies removal of the launcher-owned OpenCode 2 runtime before removing its config. If runtime removal fails, the entry is kept for retry. Successfully removed clients are cleared from the registration record even when another client is still pending. Changed or unreadable entries remain untouched. Reload other running clients to drop their cached tools; server credentials remain valid until revoked in the Dashboard.
+
+After OpenCode registration, the installer explicitly reconnects its Ordering process so a renewed key is loaded even when the command did not change. Other running clients require their normal reload after key renewal.

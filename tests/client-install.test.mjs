@@ -42,12 +42,18 @@ elif [ "$1" = mcp ]; then
 elif [ "\${ORDERING_TEST_ACTIVATION_FAIL:-}" = 1 ]; then
   exit 1
 elif [ "$2" = experimental.mcp.add ]; then
-  touch "${join(work, 'native-active')}"
+  if [ ! -f "${join(work, 'native-active')}" ]; then
+    touch "${join(work, 'native-active')}"
+    cp "${join(work, 'credential-generation')}" "${join(work, 'native-generation')}"
+  fi
+elif [ "$2" = experimental.mcp.connect ]; then
+  cp "${join(work, 'credential-generation')}" "${join(work, 'native-generation')}"
 elif [ "$2" = experimental.mcp.remove ]; then
   rm -f "${join(work, 'native-active')}"
 fi
 `, { mode: 0o700 });
   const run = (action, version = '1', failActivation = '', testClients = '') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation, ORDERING_TEST_CLIENTS: testClients } });
+  writeFileSync(join(work, 'credential-generation'), 'initial');
   let result = run('install');
   assert.equal(result.status, 0, result.stderr);
   assert.equal((result.stdout.match(/registered globally/g) ?? []).length, 6);
@@ -61,6 +67,9 @@ fi
   assert.ok(readFileSync(join(work, 'codex.config'), 'utf8').includes('keep-model'));
   assert.equal(run('install', '2').status, 0, 'OpenCode 2 migration succeeds');
   const jsonc = await import(pathToFileURL(join(deps, 'jsonc-parser/lib/umd/main.js')));
+  writeFileSync(join(work, 'credential-generation'), 'renewed');
+  assert.equal(run('install', '2').status, 0, 'renewal reconnects an existing same-command process');
+  assert.equal(readFileSync(join(work, 'native-generation'), 'utf8'), 'renewed', 'native runtime loads the renewed credential generation');
   const modern = jsonc.parse(readFileSync(join(work, 'opencode.config'), 'utf8'));
   assert.deepEqual(modern.mcp.servers.ordering.command, ['/bin/bash', join(work, 'ordering'), 'mcp']);
   assert.equal(modern.mcp.ordering, undefined, 'legacy owned entry removed after migration');
