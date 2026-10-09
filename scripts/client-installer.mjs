@@ -38,7 +38,13 @@ const owned = config => {
   const parts = Array.isArray(config.command) ? config.command : [config.command ?? config.cmd, ...(Array.isArray(config.args) ? config.args : [])];
   return JSON.stringify(parts) === JSON.stringify([command, ...args]);
 };
-const sameServer = config => owned(config) || /^https:\/\/api\.ordering\.co\/mcp\/[a-zA-Z0-9_-]+$/.test(config.url ?? config.httpUrl ?? '');
+// An HTTP entry for another project may belong to a different setup/session.
+// The helper already passes its verified target project as argv[4]; an unknown
+// target cannot authorize migrating a non-owned HTTP configuration.
+const targetProject = process.argv[4];
+const targetUrl = targetProject && /^[a-zA-Z0-9_-]+$/.test(targetProject)
+  ? `https://api.ordering.co/mcp/${targetProject}` : null;
+const sameServer = config => owned(config) || (targetUrl !== null && (config.url ?? config.httpUrl) === targetUrl);
 const disabled = config => config.disabled === true || config.enabled === false;
 const readClients = recorded => listInstalledServers({ global: true, ...(recorded?.length ? { agents: recorded } : {}) });
 

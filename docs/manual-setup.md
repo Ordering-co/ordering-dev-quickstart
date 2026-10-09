@@ -106,3 +106,5 @@ Uninstall verifies removal of the launcher-owned OpenCode 2 runtime before remov
 After OpenCode registration, the installer explicitly reconnects its Ordering process so a renewed key is loaded even when the command did not change. Other running clients require their normal reload after key renewal.
 
 Without `.clients/installed.json`, legacy native Ordering entries are preserved and uninstall/logout/reset stop for review. Resolve only the intended entry in the client; never delete another session’s server to force success.
+
+A legacy HTTP Ordering entry can migrate automatically only when its URL matches the verified project selected for this installation. Another project, an unknown target, or another launcher path is preserved as a conflict; review that specific connection before choosing to replace it.
