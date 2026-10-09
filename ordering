@@ -314,13 +314,13 @@ cmd_doctor() {
 
   title "Tools"
   local found=""
-  for t in claude codex cursor code; do have "$t" && found="$found $t"; done
-  if [ -n "$found" ]; then ok "Found:$found"; else warn "No agent or editor CLI found (claude, codex, cursor, code)"; fi
+  for t in claude codex opencode cursor code; do have "$t" && found="$found $t"; done
+  if [ -n "$found" ]; then ok "Found:$found"; else warn "No agent or editor CLI found (claude, codex, opencode, cursor, code)"; fi
   have jq || have python3 || warn "Install jq or python3 for full doctor output"
 
   echo
   if [ "$problems" -eq 0 ]; then
-    printf '%sReady.%s Next: ./ordering install   (or ./ordering claude to use it only in this folder)\n' "$C_OK" "$C_0"
+    printf '%sConnection verified.%s Client registration: ./ordering clients   (install or repair: ./ordering install)\n' "$C_OK" "$C_0"
   else
     printf '%s%d problem(s) found.%s See docs/troubleshooting.md\n' "$C_ERR" "$problems" "$C_0"
     exit 1
@@ -787,6 +787,11 @@ client_runtime() {
     rm -f "$ROOT/.clients/runtime-ready"
     cp "$ROOT/client-installer/package.json" "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/"
     npm ci --prefix "$ROOT/.clients" --ignore-scripts --no-audit --no-fund >&2 || die "Could not prepare the client installer. Login is saved; rerun ./ordering install."
+    if [ ! -f "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" ] ||
+      [ ! -f "$ROOT/.clients/node_modules/add-mcp/dist/lib.js" ] ||
+      [ ! -f "$ROOT/.clients/node_modules/jsonc-parser/lib/umd/main.js" ]; then
+      die "Client runtime is incomplete. Login is saved; rerun ./ordering install."
+    fi
     cp "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/runtime-ready"
   fi
   command -v node > "$ROOT/.clients/node-path"

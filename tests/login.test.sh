@@ -250,6 +250,11 @@ cat > "$WORK/node-stub/npm" <<'STUB'
 printf 'called\n' >> "$ORDERING_CLIENT_TEST_NPM_CALLS"
 # Simulate an interrupted npm ci that has copied some files but cannot mark readiness.
 if [ "${ORDERING_CLIENT_TEST_NPM_FAIL:-}" = 1 ]; then exit 1; fi
+if [ "${ORDERING_CLIENT_TEST_NPM_INCOMPLETE:-}" = 1 ]; then exit 0; fi
+if [ "$1" = ci ] && [ "$2" = --prefix ]; then
+  mkdir -p "$3/node_modules/mcp-remote/dist" "$3/node_modules/add-mcp/dist" "$3/node_modules/jsonc-parser/lib/umd"
+  touch "$3/node_modules/mcp-remote/dist/proxy.js" "$3/node_modules/add-mcp/dist/lib.js" "$3/node_modules/jsonc-parser/lib/umd/main.js"
+fi
 STUB
 chmod +x "$WORK/node-stub/npm"
 rm -f "$WORK/repo/.clients/runtime-ready"
@@ -263,7 +268,13 @@ check "retry repairs a partial runtime even when a proxy file already exists" '[
 rm -f "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js"
 PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" \
   "$WORK/repo/ordering" prepare > "$WORK/prepare-missing-module.out" 2>&1
-check "missing client adapter triggers runtime repair" '[ "$(wc -l < "$WORK/npm-calls" | tr -d " ")" = 3 ]'
+check "missing client adapter triggers runtime repair" '[ "$(wc -l < "$WORK/npm-calls" | tr -d " ")" = 3 ] && [ -f "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js" ]'
+
+rm -f "$WORK/repo/.clients/node_modules/add-mcp/dist/lib.js"
+rc=0
+PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" ORDERING_CLIENT_TEST_NPM_INCOMPLETE=1 \
+  "$WORK/repo/ordering" prepare > "$WORK/prepare-incomplete.out" 2>&1 || rc=$?
+check "a successful npm exit without required modules is not readiness" '[ "$rc" != 0 ] && [ ! -e "$WORK/repo/.clients/runtime-ready" ]'
 
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }
