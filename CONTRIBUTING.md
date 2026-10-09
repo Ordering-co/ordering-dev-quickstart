@@ -5,7 +5,7 @@ Thanks for helping other developers get started with Ordering.co.
 ## Good contributions
 
 - A step that confused you, rewritten so it wouldn't have.
-- A fix for a client config (Claude Code, Codex, Cursor, VS Code) that stopped working.
+- A fix for global client registration (Claude Code, Claude Desktop, Codex, Cursor, OpenCode, VS Code) that stopped working.
 - A new read-only request in `requests/`, or a prompt in `prompts/` that worked well for you.
 - A clearer message in `./ordering doctor` for a problem you ran into.
 
@@ -15,7 +15,7 @@ For larger changes, such as a new example language or a new client, open an issu
 
 - **No keys, ever.** Not in code, configs, docs, issues or screenshots. CI scans every change for secrets.
 - **Read-only examples.** Requests and prompts must not create, change or delete data, because there is no sandbox.
-- **`./ordering` stays dependency-free:** bash 3.2 or newer (the macOS default), `curl`, and `jq` or `python3` when available.
+- **The login/API helper stays dependency-free:** bash 3.2+, `curl`, and `jq` or `python3`. Global installation additionally uses Node.js 22+ and npm; keep dependencies pinned in `client-installer/package-lock.json` and use `npm ci --ignore-scripts`.
 - **Don't duplicate the API Reference.** Link to the operation instead of copying its parameters.
 
 ## Before opening a pull request
@@ -24,6 +24,8 @@ For larger changes, such as a new example language or a new client, open an issu
 bash -n ordering
 shellcheck ordering            # if you have it
 ./ordering doctor              # with your own .env
+node tests/client-install.test.mjs  # after preparing .clients dependencies
+bash tests/login.test.sh
 ```
 
 Describe what you changed and how you tested it.

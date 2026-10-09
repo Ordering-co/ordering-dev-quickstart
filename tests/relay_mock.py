@@ -94,6 +94,8 @@ class Handler(BaseHTTPRequestHandler):
         return (m.group(1), m.group(2) or "") if m else (None, None)
 
     def do_GET(self):
+        if re.match(r"^/v400/[^/]+/[^/]+/configs$", self.path):
+            return self.send(200, {"error": False, "result": []})
         # The terminal verifies a delivered API key server-side with this call,
         # the same way the real core API would: the key must exist and belong
         # to the project in the URL, and the response carries its owner's id.
@@ -134,9 +136,27 @@ class Handler(BaseHTTPRequestHandler):
             known = KEYS.get(auth[len("Bearer "):]) if auth.startswith("Bearer ") else None
             if not known or known["project"] != m.group(1):
                 return self.send(401, {"jsonrpc": "2.0", "error": {"code": -32001, "message": "Invalid MCP token."}})
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length)) if length else {}
+            request_id = body.get("id", 1)
+            method = body.get("method")
+            if method == "initialize":
+                return self.send(200, {"jsonrpc": "2.0", "id": request_id, "result": {
+                    "protocolVersion": "2025-03-26", "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "test-ordering", "version": "1"}}})
+            if method == "notifications/initialized":
+                self.send_response(202)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if method == "tools/list":
+                return self.send(200, {"jsonrpc": "2.0", "id": request_id, "result": {"tools": [{
+                    "name": "whoami", "description": "Test identity", "inputSchema": {"type": "object", "properties": {}}}]}})
             content = {"project": m.group(1), "user": {"id": 1, "name": "Test Admin", "role": "administrator"},
                        "token": {"name": known["name"], "scope": "read", "expires_at": iso(time.time() + 30 * 86400)}}
-            return self.send(200, {"jsonrpc": "2.0", "id": 1, "result": {"structuredContent": content}})
+            return self.send(200, {"jsonrpc": "2.0", "id": request_id, "result": {
+                "content": [{"type": "text", "text": json.dumps(content)}], "structuredContent": content}})
+
 
         pid, action = self.route()
         if action is None:

@@ -19,6 +19,10 @@ You are working in the Ordering.co developer quickstart. A developer uses this r
 
 If the developer wants to connect, follow [SETUP.md](SETUP.md) step by step.
 
+## Completing setup
+
+Browser confirmation means credential delivery, not client registration. Use `login start --install`, keep the pending terminal process ID, and collect its final result. Require authentication, a passing stdio `whoami` probe and client read-back verification before reporting installed clients. When installation fails after credentials were saved, retry `./ordering install` rather than creating a new pairing. Follow `SETUP.md` for client restarts and trust prompts.
+
 ## Using the Ordering.co MCP
 
 Tools: `whoami`, `search_operations`, `describe_operation`, `read_operation`, `write_operation`.
@@ -44,9 +48,9 @@ Tools: `whoami`, `search_operations`, `describe_operation`, `read_operation`, `w
 ## Repo map
 
 - `SETUP.md`: the setup runbook you follow.
-- `ordering`: bash helper (`login`, `init`, `doctor`, `install`, `uninstall`, `claude`, `codex`, `cursor`, `code`, `api`, `spec`).
+- `ordering`: bash helper (`login`, `init`, `doctor`, `install`, `clients`, `prepare`, `mcp`, `uninstall`, `claude`, `codex`, `cursor`, `code`, `api`, `spec`).
 - `.env.example`: template for `.env`. `.env` holds the developer's keys: never read, print or commit it.
-- `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`: MCP configs. They hold variable references only.
+- `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`: MCP configs. They hold launcher paths only; keys are loaded by the helper at runtime.
 - `.claude/settings.json`: denies Claude Code access to `.env`.
 - `.gitleaks.toml`: secret-scanning rules used by CI.
 - `requests/`: example REST requests for VS Code REST Client.

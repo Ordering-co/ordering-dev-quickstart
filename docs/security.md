@@ -14,7 +14,7 @@ What this repo does about it:
 ## Keys
 
 - `.env` is in `.gitignore`. Never remove that line, and never force-add `.env`.
-- Config files in this repo contain only variable references such as `${ORDERING_MCP_KEY}`. Keep it that way.
+- MCP config files contain launcher paths, never keys. The helper loads the MCP key from private `.env` at runtime; the REST API key is removed before the MCP proxy starts. Private client configuration backups live in ignored `.clients/backups/`; never commit that directory.
 - Never paste a key into an AI chat, an issue, a screenshot or a support ticket. The chat transcript keeps it.
 - Use read-scoped MCP keys for everyday work, and short expiries for write keys.
 - Keep API keys on servers. Never ship them in a website, a mobile app or any client-side code.

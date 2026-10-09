@@ -1,6 +1,6 @@
 # Ordering.co + your AI agent
 
-Ask Claude Code or Codex about your Ordering.co orders, businesses and reports.
+Connect your detected MCP clients to Ordering.co orders, businesses and reports.
 
 &nbsp;
 
@@ -10,7 +10,7 @@ Ask Claude Code or Codex about your Ordering.co orders, businesses and reports.
 Connect me to Ordering.co: clone https://github.com/Finitless-com/ordering-dev-quickstart to ~/ordering-dev-quickstart (or pull it if I already have it), then read its SETUP.md and follow it step by step.
 ```
 
-<sub>Works on macOS and Linux. On Windows, use WSL.</sub>
+<sub>Works on macOS and Linux. Global client installation requires Node.js 22+ and npm. On Windows, use WSL.</sub>
 
 &nbsp;
 
@@ -22,7 +22,9 @@ Open the link, sign in with your Ordering.co **Dashboard** or **Billing** accoun
 
 &nbsp;
 
-## 3 · Restart your agent and ask
+## 3 · Check the installer result, restart your client and ask
+
+The browser confirms credential delivery. Wait for the terminal to verify the MCP launcher and report each client registration; then restart/reload your client.
 
 > Who am I in Ordering?
 
