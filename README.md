@@ -38,10 +38,32 @@ More ideas: [prompts/](prompts/)
 
 &nbsp;
 
+## 4 · Optional, recommended · Add Context7 for development with AI
+
+Context7 lets your agent look up current Ordering.co documentation and examples while writing code. The Ordering MCP connects to your project's data; Context7 searches documentation.
+
+```bash
+cd ~/ordering-dev-quickstart
+npx ctx7 setup --mcp --oauth --project
+```
+
+Choose the client you use, complete its Context7 sign-in, then reload its MCP tools. This configures Context7 for the current project where the client supports it, using OAuth instead of putting a key in this repo.
+
+| Documentation | Context7 library |
+|---|---|
+| Complete API Reference: endpoints, parameters, request bodies and responses | [`/openapi/ordering_co_api-reference_openapi_json`](https://context7.com/openapi/ordering_co_api-reference_openapi_json) |
+| REST authentication and MCP setup and permissions | [`/llmstxt/ordering_co_llms-small_txt`](https://context7.com/llmstxt/ordering_co_llms-small_txt) |
+
+Try: “Use Context7 library /openapi/ordering_co_api-reference_openapi_json to explain GET /usage_limits, then verify the exact operation with ./ordering spec.”
+
+[Setup and verification](docs/context7.md) · [Ready-to-copy prompts](prompts/20-build-with-the-api.md). You can also use the [API Reference](https://docs.ordering.co/api-reference/) and [developer docs](https://docs.ordering.co/docs/developers/) directly.
+
+&nbsp;
+
 ---
 
 <sub>
 
-**Something went wrong?** [Troubleshooting](docs/troubleshooting.md) · **Prefer to set it up yourself, or use Cursor or VS Code?** [Manual setup](docs/manual-setup.md) · **Want to disconnect or reset?** [`./ordering logout`](docs/manual-setup.md#disconnect-or-reset) · **Building with the REST API?** [REST API](docs/rest-api.md) · **Keys and safety:** [Security](docs/security.md) · **How sign-in works:** [Login protocol](docs/login-protocol.md) · [Developer docs](https://docs.ordering.co/docs/developers/) · [MIT License](LICENSE)
+**Something went wrong?** [Troubleshooting](docs/troubleshooting.md) · **Prefer to set it up yourself, or use Cursor or VS Code?** [Manual setup](docs/manual-setup.md) · **Want to disconnect or reset?** [`./ordering logout`](docs/manual-setup.md#disconnect-or-reset) · **Building with the REST API?** [REST API](docs/rest-api.md) · **Documentation with AI:** [Context7 (optional)](docs/context7.md) · **Keys and safety:** [Security](docs/security.md) · **How sign-in works:** [Login protocol](docs/login-protocol.md) · [Developer docs](https://docs.ordering.co/docs/developers/) · [MIT License](LICENSE)
 
 </sub>
