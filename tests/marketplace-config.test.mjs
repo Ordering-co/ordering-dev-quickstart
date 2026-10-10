@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { exportMarketplaceConfig } from '../scripts/marketplace-config.mjs'
+import { exportPublicMarketplaceConfig, connectionProject, exportMarketplaceConfig } from '../scripts/marketplace-config.mjs'
 
 const identity = { project: 'authorized', user: { id: 1, role: 'administrator', email: 'private@example.test' }, token: { scope: 'read' } }
 const options = { project: 'authorized', expectedProject: 'authorized', key: 'ord_mcp_fixture' }
@@ -39,4 +39,21 @@ test('Expired credential, foreign current project, API envelope failure and sing
 test('Credentials are never sent to caller-controlled hosts or redirected', async () => {
   await assert.rejects(exportMarketplaceConfig({ ...options, host: 'https://attacker.test', request: fixture().request }), /invalid_api_host/)
   const f = fixture(); await exportMarketplaceConfig({ ...options, request: f.request }); assert.equal(f.calls.every(c => c.args.redirect === 'error'), true)
+})
+
+
+test('Project is derived automatically after login; no client-entered code assertion is required', async () => {
+  const f = fixture(); const result = await exportMarketplaceConfig({ ...options, expectedProject: undefined, request: f.request })
+  assert.equal(result.project, 'authorized'); assert.equal(result.verification.identity, true)
+})
+test('Known project config uses public reads only, with no MCP or administrative credential', async () => {
+  const f = fixture(); const result = await exportPublicMarketplaceConfig({ project: 'authorized', request: f.request })
+  assert.equal(result.verification.identity, false); assert.equal(result.verification.catalog, true)
+  assert.equal(f.calls.length, 4); assert.equal(f.calls.every(c => !c.args.method && !c.args.headers?.Authorization && !c.args.headers?.['X-Api-Key']), true)
+  assert.equal(f.calls.some(c => c.url.includes('/mcp/')), false)
+})
+test('Existing identity probe exposes only project and availability, never user/key data', async () => {
+  const f = fixture(); const result = await connectionProject({ ...options, request: f.request })
+  assert.deepEqual(result, { status: 'connected', project: 'authorized', source: 'mcp', authenticated: true })
+  assert.equal(f.calls.length, 1); assert.equal(JSON.stringify(result).includes('private@example.test'), false)
 })

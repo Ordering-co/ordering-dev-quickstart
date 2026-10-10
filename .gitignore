@@ -21,3 +21,7 @@ Thumbs.db
 # Locked installer runtime and private client configuration backups
 .clients/
 node_modules/
+
+# Non-secret project selection from browser pairing
+.marketplace-project.json
+.marketplace-project.json.*.tmp
