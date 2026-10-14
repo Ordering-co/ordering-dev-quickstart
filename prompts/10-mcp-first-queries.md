@@ -1,6 +1,6 @@
 # First things to ask through the MCP
 
-Start the agent with `./ordering claude` or `./ordering codex`, then try these.
+After `./ordering login --install` completes, reload your registered client and confirm it calls `whoami`. The folder-only alternatives are `./ordering claude` or `./ordering codex` after `prepare`. Discover and describe operations before querying; request only the data you need.
 
 ## Try these first
 
@@ -71,3 +71,17 @@ Search the Ordering operations related to coupons and promotions and explain wha
 ```text
 Prepare the change to <describe the change>. Before calling write_operation, show me exactly which operation, which record and which fields will change, and wait for my approval.
 ```
+
+## Documentation with Context7 (optional)
+
+Once [Context7 is configured](../docs/context7.md), these retrieve documentation rather than your project's records:
+
+```text
+Use Context7 library /llmstxt/ordering_co_llms-small_txt to explain Ordering MCP installation, doctor and clients checks, and the difference between read and write permissions. Explain the steps without reconnecting me or changing my project data.
+```
+
+```text
+Use Context7 library /openapi/ordering_co_api-reference_openapi_json to explain GET /usage_limits: its include parameter and response fields. Verify the exact method and path with ./ordering spec. Don't call my project.
+```
+
+If Context7 isn't available, use the [API Reference](https://docs.ordering.co/api-reference/) and [public docs](https://docs.ordering.co/llms.txt) directly.

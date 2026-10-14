@@ -11,10 +11,10 @@ Two ways:
 - During `./ordering login`, leave **"Also give my agent the REST API"** checked on the sign-in page (it is on by default).
 - Any time, in the Dashboard → **Settings → Developers → API Keys → Add API key**.
 
-Put it in `.env` as `ORDERING_API_KEY`, together with `ORDERING_PROJECT`. See [credentials](credentials.md) for how it differs from the MCP key.
+Browser pairing saves it privately through the helper. For manual setup, enter it yourself in the private editor opened by `./ordering init`, as `ORDERING_API_KEY`, together with `ORDERING_PROJECT`. See [credentials](credentials.md) for how it differs from the MCP key.
 
 > [!WARNING]
-> **API keys have no scope and don't expire.** They act with your full permissions until you revoke them in the Dashboard (Settings → Developers → API Keys). Scoped, revocable API keys are planned.
+> **API keys have no scope and don't expire.** They act with your full permissions until you revoke them in the Dashboard (Settings → Developers → API Keys). Selecting MCP read does not restrict this separate credential. Uncheck the REST option to exclude a new API key. A same-project key already saved locally is retained with a warning; unchecking does not revoke it.
 
 ## 2 · Make your first request
 

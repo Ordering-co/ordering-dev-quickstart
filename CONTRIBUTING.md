@@ -14,7 +14,7 @@ For larger changes, such as a new example language or a new client, open an issu
 ## Rules
 
 - **No keys, ever.** Not in code, configs, docs, issues or screenshots. CI scans every change for secrets.
-- **Read-only examples.** Requests and prompts must not create, change or delete data, because there is no sandbox.
+- **Read-only data requests.** Keep executable HTTP data examples read-only. Authentication may create a session; write prompts must remain explicit templates with placeholders, live operation discovery and approval before execution. There is no automatic sandbox.
 - **The login/API helper stays dependency-free:** bash 3.2+, `curl`, and `jq` or `python3`. Global installation additionally uses Node.js 22+ and npm; keep dependencies pinned in `client-installer/package-lock.json` and use `npm ci --ignore-scripts`.
 - **Don't duplicate the API Reference.** Link to the operation instead of copying its parameters.
 

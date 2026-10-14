@@ -153,6 +153,38 @@ rm -rf "$WORK/repo/.login"
 rc=0; "$WORK/repo/ordering" login code > "$WORK/code2.out" 2>&1 || rc=$?
 check "login code with no sign-in in progress fails" '[ "$rc" != 0 ]'
 
+echo "# plugin renewal: skill-only versus legacy"
+mkdir -p "$WORK/plugin-mock-bin"
+cat > "$WORK/plugin-mock-bin/claude" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in
+  'plugin list') echo 'ordering@ordering-dev' ;;
+  'plugin configure ordering@ordering-dev --json')
+    if [ "${PLUGIN_TEST_LEGACY:-}" = 1 ]; then
+      echo '{"schema":{"mcp_key":{"type":"string"}}}'
+    else
+      echo '{"schema":{}}'
+    fi ;;
+  'plugin configure ordering@ordering-dev --values-stdin')
+    cat >/dev/null
+    touch "$PLUGIN_TEST_SYNC_MARKER" ;;
+  *) exit 1 ;;
+esac
+MOCK
+chmod +x "$WORK/plugin-mock-bin/claude"
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > /dev/null
+PATH="$WORK/plugin-mock-bin:$PATH" ORDERING_LOGIN_SKIP_PLUGIN= PLUGIN_TEST_SYNC_MARKER="$WORK/plugin-sync-called" \
+  "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/plugin-skill.out" 2>&1
+check "skill-only plugin receives no credential" '[ ! -e "$WORK/plugin-sync-called" ] && grep -q "no plugin credential copied" "$WORK/plugin-skill.out"'
+check "skill-only renewal never prints the key" '! grep -q "$KEY" "$WORK/plugin-skill.out"'
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > /dev/null
+PATH="$WORK/plugin-mock-bin:$PATH" ORDERING_LOGIN_SKIP_PLUGIN= PLUGIN_TEST_LEGACY=1 PLUGIN_TEST_SYNC_MARKER="$WORK/plugin-sync-called" \
+  "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/plugin-legacy.out" 2>&1
+check "legacy plugin receives credential only through private stdin" '[ -e "$WORK/plugin-sync-called" ] && grep -q "private input" "$WORK/plugin-legacy.out"'
+check "legacy renewal never prints the key" '! grep -q "$KEY" "$WORK/plugin-legacy.out"'
+
 echo "# logout"
 fresh; start
 node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" with-api-key > "$WORK/page.out"
@@ -251,9 +283,12 @@ printf 'called\n' >> "$ORDERING_CLIENT_TEST_NPM_CALLS"
 # Simulate an interrupted npm ci that has copied some files but cannot mark readiness.
 if [ "${ORDERING_CLIENT_TEST_NPM_FAIL:-}" = 1 ]; then exit 1; fi
 if [ "${ORDERING_CLIENT_TEST_NPM_INCOMPLETE:-}" = 1 ]; then exit 0; fi
-if [ "$1" = ci ] && [ "$2" = --prefix ]; then
-  mkdir -p "$3/node_modules/mcp-remote/dist" "$3/node_modules/add-mcp/dist" "$3/node_modules/jsonc-parser/lib/umd"
-  touch "$3/node_modules/mcp-remote/dist/proxy.js" "$3/node_modules/add-mcp/dist/lib.js" "$3/node_modules/jsonc-parser/lib/umd/main.js"
+if [ "$1" = ci ]; then
+  # npm 11's prefix inference failed in a fresh clone with no root package.
+  # The bootstrap must run from the runtime directory, like a real package.
+  [ "${2:-}" != --prefix ] && [ "$(basename "$PWD")" = .clients ] || exit 1
+  mkdir -p node_modules/mcp-remote/dist node_modules/add-mcp/dist node_modules/jsonc-parser/lib/umd
+  touch node_modules/mcp-remote/dist/proxy.js node_modules/add-mcp/dist/lib.js node_modules/jsonc-parser/lib/umd/main.js
 fi
 STUB
 chmod +x "$WORK/node-stub/npm"
@@ -275,6 +310,20 @@ rc=0
 PATH="$WORK/node-stub:$PATH" ORDERING_CLIENT_TEST_NPM_CALLS="$WORK/npm-calls" ORDERING_CLIENT_TEST_NPM_INCOMPLETE=1 \
   "$WORK/repo/ordering" prepare > "$WORK/prepare-incomplete.out" 2>&1 || rc=$?
 check "a successful npm exit without required modules is not readiness" '[ "$rc" != 0 ] && [ ! -e "$WORK/repo/.clients/runtime-ready" ]'
+
+echo "# cleared local credentials override inherited shell values"
+fresh
+printf 'ORDERING_PROJECT=orderingtest\nORDERING_MCP_KEY=\nORDERING_API_KEY=\n' > "$WORK/repo/.env"
+ORDERING_MCP_KEY="$KEY" ORDERING_API_KEY="$API_TEST_KEY" \
+  "$WORK/repo/ordering" shell-env > "$WORK/cleared-shell.out" 2>&1
+check "a blank local MCP key is not inherited or exported" '! grep -q "export ORDERING_MCP_KEY=" "$WORK/cleared-shell.out"'
+check "cleared credentials are never printed" '! grep -q "$KEY" "$WORK/cleared-shell.out" && ! grep -q "$API_TEST_KEY" "$WORK/cleared-shell.out"'
+rc=0
+ORDERING_MCP_KEY="$KEY" "$WORK/repo/ordering" mcp > "$WORK/cleared-mcp.out" 2>&1 || rc=$?
+check "MCP refuses to launch with a cleared local key despite a shell key" '[ "$rc" != 0 ] && grep -q "No MCP key" "$WORK/cleared-mcp.out"'
+rc=0
+ORDERING_API_KEY="$API_TEST_KEY" "$WORK/repo/ordering" api GET /orders > "$WORK/cleared-api.out" 2>&1 || rc=$?
+check "REST API refuses a cleared local key despite a shell key" '[ "$rc" != 0 ] && grep -q "ORDERING_API_KEY is empty" "$WORK/cleared-api.out"'
 
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }

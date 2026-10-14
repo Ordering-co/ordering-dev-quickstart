@@ -24,7 +24,8 @@ jobs:
           GITLEAKS_VERSION: "8.30.1"
         run: |
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
-          ./gitleaks git . --config .gitleaks.toml --redact --verbose
+          ./gitleaks git . --config .gitleaks.toml --redact --verbose --log-opts="--all"
+          ./gitleaks dir . --config .gitleaks.toml --redact
 
       - name: Configs are valid and hold no literal keys
         run: |
@@ -62,25 +63,30 @@ jobs:
 
   clients:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 26]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
       - name: Install locked client adapters
         run: |
           mkdir .clients
           cp client-installer/package.json client-installer/package-lock.json .clients/
-          npm ci --prefix .clients --ignore-scripts --no-audit --no-fund
+          (cd .clients && npm ci --ignore-scripts --no-audit --no-fund)
       - name: Multi-client registration tests
-        run: node tests/client-install.test.mjs
+        run: |
+          node tests/client-install.test.mjs
+          node tests/legacy-uninstall.test.mjs
 
   smoke:
     # Live check against a real project with a READ-scoped key.
     # Runs only where the ORDERING_PROJECT variable and ORDERING_MCP_KEY secret exist,
     # so forks and outside pull requests skip it.
     needs: checks
-    if: ${{ vars.ORDERING_PROJECT != '' }}
+    if: ${{ vars.ORDERING_PROJECT != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     env:
       ORDERING_PROJECT: ${{ vars.ORDERING_PROJECT }}

@@ -38,7 +38,13 @@ const owned = config => {
   const parts = Array.isArray(config.command) ? config.command : [config.command ?? config.cmd, ...(Array.isArray(config.args) ? config.args : [])];
   return JSON.stringify(parts) === JSON.stringify([command, ...args]);
 };
-const sameServer = config => owned(config) || /^https:\/\/api\.ordering\.co\/mcp\/[a-zA-Z0-9_-]+$/.test(config.url ?? config.httpUrl ?? '');
+// An HTTP entry for another project may belong to a different setup/session.
+// The helper already passes its verified target project as argv[4]; an unknown
+// target cannot authorize migrating a non-owned HTTP configuration.
+const targetProject = process.argv[4];
+const targetUrl = targetProject && /^[a-zA-Z0-9_-]+$/.test(targetProject)
+  ? `https://api.ordering.co/mcp/${targetProject}` : null;
+const sameServer = config => owned(config) || (targetUrl !== null && (config.url ?? config.httpUrl) === targetUrl);
 const disabled = config => config.disabled === true || config.enabled === false;
 const readClients = recorded => listInstalledServers({ global: true, ...(recorded?.length ? { agents: recorded } : {}) });
 
@@ -140,9 +146,9 @@ if (action === 'probe') {
   }
   if (!registeredThisRun) { console.error('  ✘ No supported client was registered. Installation is incomplete.'); failures++; }
   if (opencodeRegistered && opencodeV2) {
-    const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `directory=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
+    const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `location[directory]=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
     // A same-command upsert can keep a process holding an old key after renewal.
-    const reconnect = activate.status === 0 ? spawnSync('opencode', ['api', 'experimental.mcp.connect', '--param', 'server=ordering', '--param', `directory=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
+    const reconnect = activate.status === 0 ? spawnSync('opencode', ['api', 'experimental.mcp.connect', '--param', 'server=ordering', '--param', `location[directory]=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
     const status = reconnect?.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
     if (status?.status === 0 && /^\s*✓\s+ordering\s+connected\s*$/m.test(status.stdout)) {
       console.log('  ✔ OpenCode: native MCP runtime connected at the installation location.');
@@ -173,7 +179,7 @@ if (action === 'probe') {
         const status = spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 });
         const present = /^\s*[✓○✗⚠]\s+ordering\s+/m.test(status.stdout ?? '');
         const remove = status.status === 0 && present
-          ? spawnSync('opencode', ['api', 'experimental.mcp.remove', '--param', 'server=ordering', '--param', `directory=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 })
+          ? spawnSync('opencode', ['api', 'experimental.mcp.remove', '--param', 'server=ordering', '--param', `location[directory]=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 })
           : null;
         const after = remove?.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : status;
         if (after.status !== 0 || /^\s*[✓○✗⚠]\s+ordering\s+/m.test(after.stdout ?? '')) {
