@@ -31,6 +31,18 @@ Tools: `whoami`, `search_operations`, `describe_operation`, `read_operation`, `w
 - To answer a question, call `search_operations` to find the operation, `describe_operation` to learn its parameters, then `read_operation`.
 - `write_operation` exists only with a write-scoped key. Before calling it, state exactly what will change.
 
+## Optional Context7 documentation
+
+Context7 retrieves public documentation; the Ordering MCP reads or changes the connected project's data. For API/MCP development questions, use Context7 when its tools are already available:
+
+- **Complete API Reference:** `/openapi/ordering_co_api-reference_openapi_json` — endpoints, parameters, request bodies, responses and schemas.
+- **REST/MCP guides:** `/llmstxt/ordering_co_llms-small_txt` — REST authentication, MCP setup and read/write permissions.
+- With one of these explicit IDs, call `query-docs` directly with a specific question. Use `resolve-library-id` when discovering other libraries; choose the exact product instead of a similarly named one.
+- Verify the exact HTTP method/path, required fields, operation security and response schema against `./ordering spec` / `spec/openapi.json`. Retrieved snippets can describe a different operation with a similar name.
+- If Context7 is unavailable, authentication fails or its quota is exhausted, continue with the public OpenAPI and `https://docs.ordering.co/llms.txt`. Explain the fallback; do not make Context7 a requirement for Ordering setup.
+- Offer [optional setup](docs/context7.md) after the Ordering connection is verified. Install/configure it only when the developer asks for it, using their own Context7 sign-in and the agreed client/scope. An existing explicit setup request is sufficient; do not ask again for the same scope. Preserve the Ordering registration and existing instructions.
+- Send only documentation questions to Context7. Keep credentials, project/customer data and private code out of those queries.
+
 ## Building with the REST API
 
 - **Contract:** the OpenAPI 3.1 spec at `https://docs.ordering.co/api-reference/openapi.json`. Run `./ordering spec` to save it to `spec/openapi.json`, then search it with `jq` instead of guessing endpoints or fields.

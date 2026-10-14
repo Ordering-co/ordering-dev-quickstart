@@ -121,6 +121,18 @@ Add only if it applies:
 - **Cursor or VS Code:** `docs/manual-setup.md`.
 - **They want to call the REST API from code:** `docs/rest-api.md`.
 
+## 6. Optional, recommended: Context7 documentation
+
+After steps 3–5 have verified Ordering and provided the first-query menu, recommend Context7 for developers writing code with AI. Explain that it searches documentation while Ordering's MCP operates on their connected project. Follow [docs/context7.md](docs/context7.md).
+
+- If Context7 already works in the chosen client, reuse it and verify the two libraries below. Do not install a duplicate server.
+- Otherwise offer it once: “Would you also like Context7 to look up Ordering's API Reference and REST/MCP guides while we code?” If they decline, complete Ordering setup. If they already explicitly requested this setup, proceed within that request.
+- Explain which client/configuration paths will change. Prefer project scope and OAuth. Some clients have only global MCP settings; agree on that scope before writing them.
+- From the installation folder, run `npx ctx7 setup --mcp --oauth --project`. Target only the agreed client (`--claude` or `--codex` when applicable); let the developer complete sign-in and any client trust prompts. Preserve the existing Ordering entry and instructions, and check the reported paths after setup. Keep credentials out of the repo and chat.
+- Reload the client and confirm Context7's `resolve-library-id` and `query-docs` tools are available. A successful setup command or Ordering's `doctor`/`clients` output alone does not prove Context7 is usable in the running chat.
+- Query `/openapi/ordering_co_api-reference_openapi_json` for `GET /usage_limits` and `/llmstxt/ordering_co_llms-small_txt` for MCP installation and permissions. Require returned documentation to cite `https://docs.ordering.co/`; for the API answer check the exact method/path against `./ordering spec`. Querying these libraries does not require a call to the developer's Ordering data.
+- If Context7 setup or either documentation query fails, report that result separately and continue using the public API Reference and docs. The verified Ordering connection remains usable.
+
 ## If the REST API checkbox stayed checked (the default)
 
 `doctor` in step 3 will show `✔ API key … accepted` in its REST API section. From here on, reach the REST API only through `~/ordering-dev-quickstart/ordering api`, never with a raw `curl` using the key:
