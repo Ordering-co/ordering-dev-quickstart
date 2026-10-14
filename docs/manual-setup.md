@@ -13,7 +13,7 @@ The [README](../README.md) prompt does all of this for you. Use this page to set
 ## Global registration in detected MCP clients
 
 ```bash
-git clone https://github.com/Finitless-com/ordering-dev-quickstart.git ~/ordering-dev-quickstart
+git clone https://github.com/Ordering-co/ordering-dev-quickstart.git ~/ordering-dev-quickstart
 cd ~/ordering-dev-quickstart
 ./ordering init "<Server URL>"           # creates .env with your project; paste your key in it
 ./ordering doctor                        # checks project, key, scope and expiry
@@ -89,7 +89,7 @@ To sign in again right after, with a new key or after revoking the old one:
 ## Keep your fork up to date
 
 ```bash
-git remote add upstream https://github.com/Finitless-com/ordering-dev-quickstart.git
+git remote add upstream https://github.com/Ordering-co/ordering-dev-quickstart.git
 git fetch upstream && git merge upstream/main
 ```
 

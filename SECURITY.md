@@ -12,7 +12,7 @@ Never post a key, even a revoked one, in an issue or pull request.
 
 ## Reporting a vulnerability
 
-If you find a security problem in this repo, the Ordering.co API or the MCP server, **don't open a public issue**. Report it privately through [GitHub's private vulnerability reporting](https://github.com/Finitless-com/ordering-dev-quickstart/security/advisories/new) for this repository.
+If you find a security problem in this repo, the Ordering.co API or the MCP server, **don't open a public issue**. Report it privately through [GitHub's private vulnerability reporting](https://github.com/Ordering-co/ordering-dev-quickstart/security/advisories/new) for this repository.
 
 Include what you found, how to reproduce it, and what an attacker could do with it. We will acknowledge your report and keep you informed while we fix it.
 

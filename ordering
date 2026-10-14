@@ -754,7 +754,7 @@ remove_profile_block() {
 
 # The official Claude Code plugin: the MCP server plus a skill that knows the platform.
 # The key goes to the system keychain through stdin, never through arguments.
-PLUGIN_REPO="Finitless-com/ordering-mcp-plugin"
+PLUGIN_REPO="Ordering-co/ordering-mcp-plugin"
 PLUGIN_MARKETPLACE="ordering-dev"
 PLUGIN_ID="ordering@$PLUGIN_MARKETPLACE"
 

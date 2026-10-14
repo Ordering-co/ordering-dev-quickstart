@@ -1,6 +1,6 @@
 # Clients, installation and credential lifecycle
 
-The MCP server authorizes a selected operation catalog. This quickstart handles pairing, credentials, the stdio launcher and global registration; the optional [plugin](https://github.com/Finitless-com/ordering-mcp-plugin) provides a skill separately. It is not installed by `install`. There is no published `npx ordering` package.
+The MCP server authorizes a selected operation catalog. This quickstart handles pairing, credentials, the stdio launcher and global registration; the optional [plugin](https://github.com/Ordering-co/ordering-mcp-plugin) provides a skill separately. It is not installed by `install`. There is no published `npx ordering` package.
 
 ## Requirements and coverage
 
@@ -51,7 +51,7 @@ Pairing defaults to MCP read and 30 days; manual MCP keys default to 7 days, cur
 
 Use `login --install`, collect the complete result, reload clients and verify identity before revoking the old MCP key. For a leak, revoke immediately. Revoke REST separately in API Keys. `uninstall`, `logout` and `reset` never revoke server keys.
 
-The OpenCode 2 location and explicitly empty `.env` precedence corrections are tracked in [quickstart PR #5](https://github.com/Finitless-com/ordering-dev-quickstart/pull/5). At this documentation review, #5 is open, so a checkout without that fix must not be reported as passing disconnect with inherited shell keys or correct OpenCode location behavior. No history or client configuration is rewritten by this documentation update.
+The OpenCode 2 location and explicitly empty `.env` precedence corrections are tracked in [quickstart PR #5](https://github.com/Ordering-co/ordering-dev-quickstart/pull/5). At this documentation review, #5 is open, so a checkout without that fix must not be reported as passing disconnect with inherited shell keys or correct OpenCode location behavior. No history or client configuration is rewritten by this documentation update.
 
 Without an ownership manifest, legacy Claude/Codex entries named Ordering are preserved; uninstall/logout/reset require review rather than deleting by name. The shell integration and credentials remain until that review succeeds. Logout also attempts to uninstall the installed Ordering Claude plugin, including skill-only versions; reinstall the optional skill if desired after reconnecting.
 
