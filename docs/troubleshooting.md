@@ -13,7 +13,7 @@ Check your internet connection, VPN or corporate proxy.
 ## MCP
 
 **`Invalid MCP token`**
-The key is wrong, expired or revoked, or it is an older key created before the data notice existed. Run `./ordering login` to get a new one. The manual alternative is to create a key in the Dashboard and replace `ORDERING_MCP_KEY` in `.env`.
+The key is wrong, expired or revoked, or it is an older key created before the data notice existed. Run `./ordering login --install` to get a new one, then reload your client. The manual alternative is to create a key in the Dashboard and replace `ORDERING_MCP_KEY` in `.env`.
 
 ## Sign-in (`./ordering login`)
 
@@ -44,17 +44,17 @@ The key did not reach the server. Usually the agent was started without your `.e
 **Claude Code says `ORDERING_PROJECT` or `ORDERING_MCP_KEY` is missing**
 The agent started before your `.env` was filled in, or without `./ordering`. Fill in `.env`, quit, and start again with `./ordering claude`.
 
-**The agent doesn't show the `ordering` tools after `./ordering install`**
-Open a **new** terminal: the terminal you used for setup doesn't have the key yet. Then start `claude` or `codex` again.
+**The browser says credentials were delivered, but installation failed**
+Resume the pending `login wait` process and collect its final status. If credentials were saved, rerun `./ordering install`, then `./ordering clients`. Do not repeat login just for a registration failure.
 
-**The agent doesn't show the `ordering` tools**
-- **Claude Code:** run `/mcp`. If `ordering` is pending, approve it. If it failed, quit and start again with `./ordering claude`.
-- **Codex:** start it with `./ordering codex`; plain `codex` doesn't load this repo's server.
-- **Cursor:** quit Cursor completely, then run `./ordering cursor`. A Cursor window that was already open keeps its old environment.
-- **VS Code:** open `.vscode/mcp.json` and select **Start**. Tools appear in Copilot Chat in **Agent** mode only.
+**The agent does not show Ordering tools after installation**
+`./ordering clients` checks configuration read-back. Reload/restart the intended client and inspect its MCP runtime (`/mcp` in Claude Code/Codex). Approve its normal trust prompt yourself. A global launcher loads its own key; opening a new terminal to inherit an exported key is unnecessary for this path. Cursor and VS Code need their normal MCP enablement, reload and trust; VS Code uses Copilot Agent mode. For folder-only setup, run `prepare`, then `claude` or `codex` through the helper.
 
-**The agent works in the terminal but not in a desktop app**
-Desktop apps started from the Dock or Start menu don't read your `.env` or your shell profile. Start them from this folder with `./ordering`, or configure the key in the app's own settings.
+**The launcher works but a desktop app does not**
+Check that the app is on the same machine as the installer and that its entry points to this checkout. The absolute Node/launcher path supports Dock launches; moving the checkout or Node installation requires `install` again. WSL configures WSL clients, not native Windows apps. Cloud connectors do not read these local configs.
+
+**Partial installation, name collision, disabled entry or malformed config**
+Read each client result; unrelated MCPs and modified entries stay untouched. Do not delete them to force success. Resolve the named conflict or explicitly enable Ordering in the client, then retry `install`. Interrupted downloads are repaired by retry. Private backups are in `.clients/backups/` and can contain other clients' secrets; do not publish them. See [client lifecycle](clients.md).
 
 **`Key belongs to project 'x', but ORDERING_PROJECT is 'y'`**
 Each MCP key is tied to one project. Use the key from the project you want, or fix `ORDERING_PROJECT`.
@@ -66,7 +66,7 @@ Not an error. It reminds you that the agent can change real data. Use a read key
 The file lost its executable bit (common with ZIP downloads). Run `chmod +x ordering`, or use `bash ordering doctor`.
 
 **I want to disconnect / start over**
-Run `./ordering logout` (alias `disconnect`). It removes the `ordering` server from Claude Code and Codex, removes the shell block, and clears `ORDERING_MCP_KEY` from `.env` (your project stays set). It prints the key's name and a Dashboard link to revoke it, which it does **not** do for you: the key keeps working until you revoke it there. To sign in again right after, run `./ordering reset` (logout, then the same sign-in as `login`).
+Run `./ordering logout` (alias `disconnect`). It removes unchanged recorded launcher registrations and legacy integration, then clears both local MCP and REST credentials. Project settings remain. If removal fails, read the result, resolve it and retry; do not report a complete disconnect. Revoke server MCP and REST keys separately in Dashboard: neither logout nor uninstall revokes them. To pair and register again, run `./ordering reset --install`.
 
 ## REST API
 

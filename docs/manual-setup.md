@@ -1,6 +1,6 @@
 # Manual setup
 
-The [README](../README.md) prompt does all of this for you. Use this page to set things up by hand, or to connect Cursor or VS Code.
+The [README](../README.md) prompt does all of this for you. Use this page to set things up by hand, or to use a client-specific manual alternative. Cursor and VS Code can also be registered by the global installer.
 
 **Fastest by hand:** `./ordering login` signs you in through your browser and saves the key, with no copy-paste. Use `./ordering login --install` to also register detected MCP clients globally. Node.js 22+ and npm are required for installation. The steps below are for creating the key yourself.
 
@@ -13,7 +13,7 @@ The [README](../README.md) prompt does all of this for you. Use this page to set
 ## Global registration in detected MCP clients
 
 ```bash
-git clone https://github.com/Finitless-com/ordering-dev-quickstart.git ~/ordering-dev-quickstart
+git clone https://github.com/Ordering-co/ordering-dev-quickstart.git ~/ordering-dev-quickstart
 cd ~/ordering-dev-quickstart
 ./ordering init "<Server URL>"           # creates .env with your project; paste your key in it
 ./ordering doctor                        # checks project, key, scope and expiry
@@ -47,7 +47,10 @@ The CLI equivalent provided by add-mcp is `npx add-mcp … -g`: `-g` means user-
 ### Without this repo
 
 ```bash
-export ORDERING_MCP_KEY=...   # in your shell startup file, or a secrets file it loads
+printf 'MCP key (hidden): '
+read -r -s ORDERING_MCP_KEY
+printf '\n'
+export ORDERING_MCP_KEY
 claude mcp add --transport http --scope user ordering \
   "https://api.ordering.co/mcp/<project ID>" \
   --header 'Authorization: Bearer ${ORDERING_MCP_KEY}'
@@ -55,7 +58,7 @@ codex mcp add ordering --url "https://api.ordering.co/mcp/<project ID>" \
   --bearer-token-env-var ORDERING_MCP_KEY
 ```
 
-Keep the single quotes in the Claude command so the key stays a variable reference.
+Keep the single quotes in the Claude command so the key stays a variable reference. Enter the key yourself at the hidden prompt, never in chat or command arguments. Start the client from that terminal; this manual environment method does not configure an already running desktop app. Preserve existing MCP entries.
 
 ## Cursor, VS Code and OpenCode
 
@@ -73,20 +76,20 @@ The registered launcher loads its own key and uses absolute paths, so launching 
 ./ordering logout      # alias: disconnect
 ```
 
-Removes unchanged Ordering registrations from the recorded clients (and any legacy shell block), and clears `ORDERING_MCP_KEY` from `.env` (your project ID stays). It prints the key's name and a link to the Dashboard's MCP settings, where you can revoke it. **The key keeps working until you revoke it there**: `logout` only stops using it here.
+Removes unchanged Ordering registrations from the recorded clients (and any legacy shell block), and clears both `ORDERING_MCP_KEY` and `ORDERING_API_KEY` from `.env` (your project ID stays). It prints the key's name and a link to the Dashboard's MCP settings, where you can revoke it. **The key keeps working until you revoke it there**: `logout` only stops using it here.
 
-`./ordering uninstall` does the same to Claude Code, Codex and your shell, but leaves `.env` and your key alone.
+`./ordering uninstall` removes unchanged launcher-owned registrations from the recorded detected clients and any legacy shell integration, preserving `.env` and both credentials. Changed registrations are kept for review. `logout` also attempts to remove the installed Ordering Claude plugin; read its output. Neither command revokes either credential on the server.
 
 To sign in again right after, with a new key or after revoking the old one:
 
 ```bash
-./ordering reset --client claude   # logout, then the same sign-in as ./ordering login
+./ordering reset --client claude --install   # logout, then the same sign-in as ./ordering login
 ```
 
 ## Keep your fork up to date
 
 ```bash
-git remote add upstream https://github.com/Finitless-com/ordering-dev-quickstart.git
+git remote add upstream https://github.com/Ordering-co/ordering-dev-quickstart.git
 git fetch upstream && git merge upstream/main
 ```
 
@@ -101,3 +104,7 @@ An interrupted dependency download is never marked ready. Rerun `./ordering inst
 Uninstall verifies removal of the launcher-owned OpenCode 2 runtime before removing its config. If runtime removal fails, the entry is kept for retry. Successfully removed clients are cleared from the registration record even when another client is still pending. Changed or unreadable entries remain untouched. Reload other running clients to drop their cached tools; server credentials remain valid until revoked in the Dashboard.
 
 After OpenCode registration, the installer explicitly reconnects its Ordering process so a renewed key is loaded even when the command did not change. Other running clients require their normal reload after key renewal.
+
+Without `.clients/installed.json`, legacy native Ordering entries are preserved and uninstall/logout/reset stop for review. Resolve only the intended entry in the client; never delete another session’s server to force success.
+
+A legacy HTTP Ordering entry can migrate automatically only when its URL matches the verified project selected for this installation. Another project, an unknown target, or another launcher path is preserved as a conflict; review that specific connection before choosing to replace it.

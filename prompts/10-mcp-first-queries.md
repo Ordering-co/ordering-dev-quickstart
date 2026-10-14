@@ -1,6 +1,6 @@
 # First things to ask through the MCP
 
-Start the agent with `./ordering claude` or `./ordering codex`, then try these.
+After `./ordering login --install` completes, reload your registered client and confirm it calls `whoami`. The folder-only alternatives are `./ordering claude` or `./ordering codex` after `prepare`. Discover and describe operations before querying; request only the data you need.
 
 ## Try these first
 

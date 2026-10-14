@@ -23,7 +23,7 @@ for (const [name, agent] of Object.entries(agents)) {
   agent.configPath = ${JSON.stringify(work)} + '/' + name + '.config';
   agent.resolveConfigPath = () => agent.configPath;
 }
-process.argv = ['node', 'client-installer', ${JSON.stringify(work)}, process.argv[2]];
+process.argv = ['node', 'client-installer', ${JSON.stringify(work)}, process.argv[2], process.env.ORDERING_TEST_PROJECT];
 await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer.mjs'))}));
 `);
   for (const name of names) {
@@ -60,7 +60,7 @@ elif [ "$2" = experimental.mcp.remove ]; then
   rm -f "${join(work, 'native-active')}"
 fi
 `, { mode: 0o700 });
-  const run = (action, version = '1', failActivation = '', testClients = '') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation, ORDERING_TEST_CLIENTS: testClients } });
+  const run = (action, version = '1', failActivation = '', testClients = '', testProject = 'test-project') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation, ORDERING_TEST_CLIENTS: testClients, ORDERING_TEST_PROJECT: testProject } });
   writeFileSync(join(work, 'credential-generation'), 'initial');
   let result = run('install');
   assert.equal(result.status, 0, result.stderr);
@@ -104,6 +104,21 @@ fi
   assert.equal(run('install').status, 0, 'idempotent second install');
   assert.deepEqual(names.map(name => readFileSync(join(work, name + '.config'), 'utf8')), beforeRepeat, 'repeat install preserves exact existing entries');
   assert.equal(run('status').status, 0, 'read-back verification');
+  const cursorPath = join(work, 'cursor.config');
+  const cursorConfig = JSON.parse(readFileSync(cursorPath, 'utf8'));
+  cursorConfig.mcpServers.ordering = { type: 'http', url: 'https://api.ordering.co/mcp/another-project', headers: { Authorization: 'Bearer ${ORDERING_MCP_KEY}' } };
+  const anotherProject = JSON.stringify(cursorConfig);
+  writeFileSync(cursorPath, anotherProject);
+  assert.equal(run('install').status, 1, 'another Ordering project is a conflict, not automatic migration');
+  assert.equal(readFileSync(cursorPath, 'utf8'), anotherProject, 'another project entry is preserved byte for byte');
+  cursorConfig.mcpServers.ordering.url = 'https://api.ordering.co/mcp/test-project';
+  const sameProject = JSON.stringify(cursorConfig);
+  writeFileSync(cursorPath, sameProject);
+  assert.equal(run('install', '1', '', '', '').status, 1, 'unknown target cannot migrate an HTTP entry');
+  assert.equal(readFileSync(cursorPath, 'utf8'), sameProject);
+  assert.equal(run('install').status, 0, 'matching verified project can migrate to the launcher');
+  assert.ok(readFileSync(cursorPath, 'utf8').includes(join(work, 'ordering')));
+  assert.ok(readFileSync(cursorPath, 'utf8').includes('other-command'));
   writeFileSync(join(work, 'cursor.config'), JSON.stringify({ mcpServers: { ordering: { command: 'someone-elses-server' }, other: { command: 'other-command' } } }));
   result = run('install');
   assert.equal(result.status, 1, 'name collision is partial failure');
@@ -122,5 +137,5 @@ fi
     assert.ok(!text.includes(join(work, 'ordering')), name + ': own registration removed');
     assert.ok(text.includes('other-command'), name + ': unrelated server kept on uninstall');
   }
-  console.log('PASS: six client schemas; OpenCode 1/2 migration; repeat install; read-back; JSONC comments; unrelated settings; conflict refusal; safe uninstall; no secrets in configs.');
+  console.log('PASS: six client schemas; OpenCode 1/2 migration; repeat install; read-back; JSONC comments; unrelated settings; conflict refusal including other projects/unknown targets; safe uninstall; no secrets in configs.');
 } finally { rmSync(work, { recursive: true, force: true }); }

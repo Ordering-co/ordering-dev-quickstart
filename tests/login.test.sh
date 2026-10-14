@@ -153,6 +153,38 @@ rm -rf "$WORK/repo/.login"
 rc=0; "$WORK/repo/ordering" login code > "$WORK/code2.out" 2>&1 || rc=$?
 check "login code with no sign-in in progress fails" '[ "$rc" != 0 ]'
 
+echo "# plugin renewal: skill-only versus legacy"
+mkdir -p "$WORK/plugin-mock-bin"
+cat > "$WORK/plugin-mock-bin/claude" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in
+  'plugin list') echo 'ordering@ordering-dev' ;;
+  'plugin configure ordering@ordering-dev --json')
+    if [ "${PLUGIN_TEST_LEGACY:-}" = 1 ]; then
+      echo '{"schema":{"mcp_key":{"type":"string"}}}'
+    else
+      echo '{"schema":{}}'
+    fi ;;
+  'plugin configure ordering@ordering-dev --values-stdin')
+    cat >/dev/null
+    touch "$PLUGIN_TEST_SYNC_MARKER" ;;
+  *) exit 1 ;;
+esac
+MOCK
+chmod +x "$WORK/plugin-mock-bin/claude"
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > /dev/null
+PATH="$WORK/plugin-mock-bin:$PATH" ORDERING_LOGIN_SKIP_PLUGIN= PLUGIN_TEST_SYNC_MARKER="$WORK/plugin-sync-called" \
+  "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/plugin-skill.out" 2>&1
+check "skill-only plugin receives no credential" '[ ! -e "$WORK/plugin-sync-called" ] && grep -q "no plugin credential copied" "$WORK/plugin-skill.out"'
+check "skill-only renewal never prints the key" '! grep -q "$KEY" "$WORK/plugin-skill.out"'
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" > /dev/null
+PATH="$WORK/plugin-mock-bin:$PATH" ORDERING_LOGIN_SKIP_PLUGIN= PLUGIN_TEST_LEGACY=1 PLUGIN_TEST_SYNC_MARKER="$WORK/plugin-sync-called" \
+  "$WORK/repo/ordering" login wait --timeout 20 > "$WORK/plugin-legacy.out" 2>&1
+check "legacy plugin receives credential only through private stdin" '[ -e "$WORK/plugin-sync-called" ] && grep -q "private input" "$WORK/plugin-legacy.out"'
+check "legacy renewal never prints the key" '! grep -q "$KEY" "$WORK/plugin-legacy.out"'
+
 echo "# logout"
 fresh; start
 node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" with-api-key > "$WORK/page.out"

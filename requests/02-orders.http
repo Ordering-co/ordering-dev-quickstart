@@ -13,8 +13,8 @@ X-Api-Key: {{key}}
 Accept: application/json
 
 ### Only some fields
-# ./ordering api GET "/orders?orderBy=-id&page_size=5&mode=dashboard&params=id,status,total,created_at"
-GET {{base}}/orders?orderBy=-id&page_size=5&mode=dashboard&params=id,status,total,created_at
+# ./ordering api GET "/orders?orderBy=-id&page_size=5&mode=dashboard&params=id,status,business_id,created_at"
+GET {{base}}/orders?orderBy=-id&page_size=5&mode=dashboard&params=id,status,business_id,created_at
 X-Api-Key: {{key}}
 Accept: application/json
 
