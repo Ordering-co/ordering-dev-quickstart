@@ -63,16 +63,19 @@ jobs:
 
   clients:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 26]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
       - name: Install locked client adapters
         run: |
           mkdir .clients
           cp client-installer/package.json client-installer/package-lock.json .clients/
-          npm ci --prefix .clients --ignore-scripts --no-audit --no-fund
+          (cd .clients && npm ci --ignore-scripts --no-audit --no-fund)
       - name: Multi-client registration tests
         run: |
           node tests/client-install.test.mjs

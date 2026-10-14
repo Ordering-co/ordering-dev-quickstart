@@ -283,9 +283,12 @@ printf 'called\n' >> "$ORDERING_CLIENT_TEST_NPM_CALLS"
 # Simulate an interrupted npm ci that has copied some files but cannot mark readiness.
 if [ "${ORDERING_CLIENT_TEST_NPM_FAIL:-}" = 1 ]; then exit 1; fi
 if [ "${ORDERING_CLIENT_TEST_NPM_INCOMPLETE:-}" = 1 ]; then exit 0; fi
-if [ "$1" = ci ] && [ "$2" = --prefix ]; then
-  mkdir -p "$3/node_modules/mcp-remote/dist" "$3/node_modules/add-mcp/dist" "$3/node_modules/jsonc-parser/lib/umd"
-  touch "$3/node_modules/mcp-remote/dist/proxy.js" "$3/node_modules/add-mcp/dist/lib.js" "$3/node_modules/jsonc-parser/lib/umd/main.js"
+if [ "$1" = ci ]; then
+  # npm 11's prefix inference failed in a fresh clone with no root package.
+  # The bootstrap must run from the runtime directory, like a real package.
+  [ "${2:-}" != --prefix ] && [ "$(basename "$PWD")" = .clients ] || exit 1
+  mkdir -p node_modules/mcp-remote/dist node_modules/add-mcp/dist node_modules/jsonc-parser/lib/umd
+  touch node_modules/mcp-remote/dist/proxy.js node_modules/add-mcp/dist/lib.js node_modules/jsonc-parser/lib/umd/main.js
 fi
 STUB
 chmod +x "$WORK/node-stub/npm"
