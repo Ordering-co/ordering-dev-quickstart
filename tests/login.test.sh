@@ -242,6 +242,22 @@ rc=0
 check "api GET with a body is refused" '[ "$rc" != 0 ]'
 check "the refusal explains GET takes no body" 'grep -qi "GET does not take a body" "$WORK/api-getbody.err"'
 
+echo "# ./ordering api response errors"
+printf 'ORDERING_MCP_KEY=%s\n' "$KEY" >> "$WORK/repo/.env"
+# The mock echoes the API key and the first MCP key registered by the happy path.
+for api_case in error success 400 500 string nested; do
+  rc=0
+  "$WORK/repo/ordering" api GET "/__test/api/$api_case" \
+    > "$WORK/api-$api_case.out" 2> "$WORK/api-$api_case.err" || rc=$?
+  case "$api_case" in error|400|500) expected=1 ;; *) expected=0 ;; esac
+  check "api $api_case exits $expected" '[ "$rc" = "$expected" ]'
+  check "api $api_case redacts credentials in stdout and stderr" \
+    '! grep -Fq "$API_TEST_KEY" "$WORK/api-$api_case.out" "$WORK/api-$api_case.err" && ! grep -Fq "$KEY" "$WORK/api-$api_case.out" "$WORK/api-$api_case.err" && [ "$(grep -o "\*\*\*" "$WORK/api-$api_case.out" | wc -l | tr -d " ")" = 2 ]'
+done
+check "HTTP 200 API error has a brief diagnostic" 'grep -qx "API error (error: true)" "$WORK/api-error.err"'
+check "HTTP 400 keeps its diagnostic" 'grep -qx "HTTP 400" "$WORK/api-400.err"'
+check "HTTP 500 keeps its diagnostic" 'grep -qx "HTTP 500" "$WORK/api-500.err"'
+
 echo "# login --install completion and partial failure"
 fresh
 "$WORK/repo/ordering" login start --client codex --install > "$WORK/start.out" 2>&1

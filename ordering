@@ -1066,6 +1066,24 @@ cmd_api() {
     printf '%sHTTP %s%s\n' "$C_ERR" "$code" "$C_0" >&2
     exit 1
   fi
+  # Match the top-level JSON boolean, not a string or a nested error field.
+  local api_error=""
+  if have jq; then
+    api_error="$(jq -r 'if type == "object" then .error == true else false end' "$tmp" 2>/dev/null)" || api_error=""
+  elif have python3; then
+    api_error="$(python3 -c '
+import json, sys
+try:
+    body = json.load(open(sys.argv[1]))
+    print("true" if isinstance(body, dict) and body.get("error") is True else "false")
+except (ValueError, OSError):
+    pass
+' "$tmp" 2>/dev/null)" || api_error=""
+  fi
+  if [ "$api_error" = "true" ]; then
+    printf 'API error (error: true)\n' >&2
+    exit 1
+  fi
 }
 
 # ---------------------------------------------------------------- spec
