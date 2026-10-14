@@ -796,7 +796,9 @@ client_runtime() {
     [ ! -f "$ROOT/.clients/node_modules/jsonc-parser/lib/umd/main.js" ]; then
     rm -f "$ROOT/.clients/runtime-ready"
     cp "$ROOT/client-installer/package.json" "$ROOT/client-installer/package-lock.json" "$ROOT/.clients/"
-    npm ci --prefix "$ROOT/.clients" --ignore-scripts --no-audit --no-fund >&2 || die "Could not prepare the client installer. Login is saved; rerun ./ordering install."
+    # npm 11 can infer a different root with --prefix when the caller has no
+    # package.json. Run against the runtime's own package and frozen lockfile.
+    (cd "$ROOT/.clients" && npm ci --ignore-scripts --no-audit --no-fund) >&2 || die "Could not prepare the client installer. Login is saved; rerun ./ordering install."
     if [ ! -f "$ROOT/.clients/node_modules/mcp-remote/dist/proxy.js" ] ||
       [ ! -f "$ROOT/.clients/node_modules/add-mcp/dist/lib.js" ] ||
       [ ! -f "$ROOT/.clients/node_modules/jsonc-parser/lib/umd/main.js" ]; then
