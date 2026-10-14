@@ -140,9 +140,9 @@ if (action === 'probe') {
   }
   if (!registeredThisRun) { console.error('  ✘ No supported client was registered. Installation is incomplete.'); failures++; }
   if (opencodeRegistered && opencodeV2) {
-    const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `directory=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
+    const activate = spawnSync('opencode', ['api', 'experimental.mcp.add', '--param', 'server=ordering', '--param', `location[directory]=${root}`, '--data', JSON.stringify({ config: { type: 'local', command: [command, ...args] } })], { cwd: root, encoding: 'utf8', timeout: 20000 });
     // A same-command upsert can keep a process holding an old key after renewal.
-    const reconnect = activate.status === 0 ? spawnSync('opencode', ['api', 'experimental.mcp.connect', '--param', 'server=ordering', '--param', `directory=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
+    const reconnect = activate.status === 0 ? spawnSync('opencode', ['api', 'experimental.mcp.connect', '--param', 'server=ordering', '--param', `location[directory]=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
     const status = reconnect?.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : null;
     if (status?.status === 0 && /^\s*✓\s+ordering\s+connected\s*$/m.test(status.stdout)) {
       console.log('  ✔ OpenCode: native MCP runtime connected at the installation location.');
@@ -173,7 +173,7 @@ if (action === 'probe') {
         const status = spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 });
         const present = /^\s*[✓○✗⚠]\s+ordering\s+/m.test(status.stdout ?? '');
         const remove = status.status === 0 && present
-          ? spawnSync('opencode', ['api', 'experimental.mcp.remove', '--param', 'server=ordering', '--param', `directory=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 })
+          ? spawnSync('opencode', ['api', 'experimental.mcp.remove', '--param', 'server=ordering', '--param', `location[directory]=${root}`], { cwd: root, encoding: 'utf8', timeout: 20000 })
           : null;
         const after = remove?.status === 0 ? spawnSync('opencode', ['mcp', 'list'], { cwd: root, encoding: 'utf8', timeout: 20000 }) : status;
         if (after.status !== 0 || /^\s*[✓○✗⚠]\s+ordering\s+/m.test(after.stdout ?? '')) {

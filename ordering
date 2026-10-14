@@ -76,10 +76,9 @@ load_env() {
         case "$value" in \#*) value="" ;; esac
         value="${value%"${value##*[![:space:]]}"}"
       fi
-      if [ -n "$value" ]; then
-        export "$key=$value"
-        ENV_SOURCES="$ENV_SOURCES $key"
-      fi
+      # Explicit blanks win too: logout must not reuse a key inherited by the shell.
+      export "$key=$value"
+      ENV_SOURCES="$ENV_SOURCES $key"
     fi
   done < "$ENV_FILE"
 }
