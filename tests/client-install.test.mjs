@@ -35,6 +35,14 @@ await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer
   }
   const bin = join(work, 'bin'); mkdirSync(bin);
   writeFileSync(join(bin, 'opencode'), `#!/bin/sh
+if [ "$1" = api ]; then
+  task_location_ok=0
+  for task_argument in "$@"; do
+    if [ "$task_argument" = "location[directory]=${work}" ]; then task_location_ok=1; fi
+    case "$task_argument" in directory=*) exit 97 ;; esac
+  done
+  if [ "$task_location_ok" != 1 ]; then exit 96; fi
+fi
 if [ "$1" = --version ]; then
   echo "opencode v\${ORDERING_TEST_OPENCODE_VERSION:-1}.0.0"
 elif [ "$1" = mcp ]; then
