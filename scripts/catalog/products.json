@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "products": [
+    { "id": "dashboard", "directory": "ordering-dashboard", "repository": "https://github.com/Ordering-co/ordering-dashboard.git", "recursive": false, "adapter": "onboarding", "franchise": false },
+    { "id": "website-marketplace", "directory": "website-marketplace", "repository": "https://github.com/Ordering-co/website-marketplace.git", "recursive": true, "adapter": "marketplace", "franchise": false },
+    { "id": "customer-app", "directory": "ordering-app-marketplace", "repository": "https://github.com/Ordering-co/ordering-app-marketplace.git", "recursive": true, "adapter": "onboarding", "franchise": false },
+    { "id": "business-app", "directory": "ordering-app-business", "repository": "https://github.com/Ordering-co/ordering-app-business.git", "recursive": true, "adapter": "onboarding", "franchise": false },
+    { "id": "driver-app", "directory": "ordering-app-driver", "repository": "https://github.com/Ordering-co/ordering-app-driver.git", "recursive": true, "adapter": "onboarding", "franchise": false },
+    { "id": "franchise-website", "directory": "ordering-website-franchises", "repository": "https://github.com/Ordering-co/ordering-website-franchises.git", "recursive": true, "adapter": "onboarding", "franchise": true },
+    { "id": "franchise-app", "directory": "ordering-app-franchises", "repository": "https://github.com/Ordering-co/ordering-app-franchises.git", "recursive": true, "adapter": "onboarding", "franchise": true }
+  ]
+}

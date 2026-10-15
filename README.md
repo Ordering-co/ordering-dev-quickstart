@@ -7,7 +7,7 @@ Connect your detected MCP clients to Ordering.co orders, businesses and reports.
 ## 1 · Paste this into your terminal AI agent
 
 ```text
-Connect me to Ordering.co: clone https://github.com/Ordering-co/ordering-dev-quickstart to ~/ordering-dev-quickstart (or pull it if I already have it), then read its SETUP.md and follow it step by step.
+Connect me to Ordering.co: get or safely update https://github.com/Ordering-co/ordering-dev-quickstart in ~/ordering-dev-quickstart, preserving my existing changes. Read SETUP.md and follow it step by step.
 ```
 
 <sub>Works on macOS and Linux. Global client installation requires Node.js 22+ and npm. On Windows, use WSL.</sub>
@@ -42,7 +42,17 @@ This quickstart and the optional plugin are public under the Ordering-co organiz
 
 &nbsp;
 
-## 4 · Optional, recommended · Add Context7 for development with AI
+## 4 · Optional · Get all seven Ordering products
+
+After verifying your connection, your agent offers to download the seven public products into `~/ordering-products`. If you accept, it configures **all seven** for your confirmed project and asks once for a franchise if needed.
+
+Then choose which products to run locally. **Website Marketplace + Dashboard together** are the recommended first start. Only your selected products install dependencies and start; mobile builds follow their own runbooks.
+
+Already connected, or just want the code without signing in? Follow [the products guide](docs/products.md) or use [the products prompt](prompts/30-run-ordering-products.md). Skipping this keeps your verified Ordering connection ready to use.
+
+&nbsp;
+
+## 5 · Optional, recommended · Add Context7 for development with AI
 
 Context7 lets your agent look up current Ordering.co documentation and examples while writing code. The Ordering MCP connects to your project's data; Context7 searches documentation.
 

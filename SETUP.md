@@ -18,15 +18,22 @@ A developer asked you to connect them to the Ordering.co MCP. Follow these steps
 
 ## 1. Get the repo
 
+For a new location:
+
 ```bash
-if [ -d ~/ordering-dev-quickstart/.git ]; then
-  git -C ~/ordering-dev-quickstart pull --ff-only
-else
-  git clone https://github.com/Ordering-co/ordering-dev-quickstart.git ~/ordering-dev-quickstart
-fi
+git clone https://github.com/Ordering-co/ordering-dev-quickstart.git ~/ordering-dev-quickstart
 ```
 
-If `~/ordering-dev-quickstart` exists but isn't a git repo, or the clone fails, stop and tell them what happened.
+If that directory already exists, inspect its Git root, origin, branch and working-tree state first. Reuse the expected Quickstart checkout and preserve its changes. Do not expose credentials embedded in a remote URL, change its remotes, reset, stash or switch branches automatically. If it is not the expected repository, or is a symlink/collision you cannot safely identify, leave it intact and agree on a different location.
+
+A clean Quickstart checkout on `main`, with the expected canonical remote and no competing session, may be updated to obtain the current helper:
+
+```bash
+git -C ~/ordering-dev-quickstart fetch origin main
+git -C ~/ordering-dev-quickstart merge --ff-only origin/main
+```
+
+A dirty, divergent or custom-branch checkout stays untouched. Explain the specific state and agree on a safe update if one is needed; do not claim commands from a newer release exist in an older checkout. This safe Quickstart update is separate from the downloaded product checkouts: `repos clone` never fetches or pulls an existing product.
 
 Your shell's working folder may reset between commands. **Start every command with `cd ~/ordering-dev-quickstart &&`.**
 
@@ -127,7 +134,24 @@ Add only if it applies:
 - **Cursor or VS Code:** `docs/manual-setup.md`.
 - **They want to call the REST API from code:** `docs/rest-api.md`.
 
-## 6. Optional, recommended: Context7 documentation
+## 6. Offer the seven products, then ask what to run
+
+After the connection checks above pass, offer this **once**, in the developer's language:
+
+> Would you also like me to download all seven Ordering products into `~/ordering-products` so you do not have to clone them one by one?
+
+Accept or skip; respect an applicable answer already given in this conversation. Do not put this question inside `login wait`, `install`, or another pending terminal process. Collect the existing install result before starting this separate task. Skipping does not undo or make the connection incomplete. Product setup does not require another MCP connection, Context7 registration or sign-in.
+
+If they accept:
+
+1. Confirm the destination and use `./ordering repos clone --all --directory ~/ordering-products`. New clones include the six products' pinned SDK submodules. Existing verified checkouts are preserved; inspect the per-product summary and explain any conflict or partial failure.
+2. Reuse the project identity verified by the current Ordering connection and confirm its slug with the developer. If no usable connection is available, accept their explicitly supplied authorized project slug; code download and public configuration also work without Ordering login. Never read `.env` to discover it or copy an agent credential into a product.
+3. **Configure all seven by default. Do not ask which product to configure first.** Use `./ordering repos configure --all --directory ~/ordering-products --project CONFIRMED_PROJECT`. For the two franchise products, reuse an already explicitly chosen, validated selection; if one is missing or ambiguous, ask **one franchise question for both surfaces**, then supply `--franchise-slug CONFIRMED_FRANCHISE`. Never select the first result. Existing project/franchise changes require explicit confirmation; use `--confirm-project-change` only within that confirmed scope. Missing data or helper failures mean a partial result, not seven configured products.
+4. Only after configuration, ask **which products to run in localhost**, recommending **Website Marketplace and Dashboard together**. Follow the selected products' exact runbooks and install dependencies/start only those selected. Do not launch the other five or install every app's dependencies as part of configuration. Explain any native prerequisite or unavailable platform before claiming an app runs.
+
+Follow [docs/products.md](docs/products.md) for the catalogue, commands, safe repetition and recovery. Report connection, cloning, configuration and running as separate outcomes. A public `doctor` result does not prove project membership, a consumer login, native launch or real orders.
+
+## 7. Optional, recommended: Context7 documentation
 
 After steps 3–5 have verified Ordering and provided the first-query menu, recommend Context7 for developers writing code with AI. Explain that it searches documentation while Ordering's MCP operates on their connected project. Follow [docs/context7.md](docs/context7.md).
 

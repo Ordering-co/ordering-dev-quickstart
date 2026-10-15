@@ -36,6 +36,11 @@ Tests verify configuration formats and mocked protocol behavior. They do not pro
 | `api GET /orders?...` | Optional REST helper; uses the separate API credential |
 | `api --yes METHOD PATH JSON` | Non-GET only after explicit approval of that exact method/path/project/body |
 | `spec` | Saves the public OpenAPI contract to `spec/openapi.json`; inspect before selecting a REST operation |
+| `repos clone --all --directory PATH` | Downloads the seven public product checkouts and pinned submodules; preserves existing checkouts, no credentials or dependency installation |
+| `repos configure --all --directory PATH --project SLUG [--franchise-slug SLUG] [--confirm-project-change]` | Configures all seven through their existing public helpers; reports partial results, does not start apps |
+| `repos --help` | Shows standalone product commands without loading credentials |
+
+See [the products guide](products.md) for the post-connection offer, standalone setup, catalogue and partial recovery. These commands do not alter MCP registration or require another login.
 
 ## Existing installations and failures
 
