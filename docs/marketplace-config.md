@@ -1,0 +1,9 @@
+# Website Marketplace project and public configuration
+
+`./ordering marketplace-project` returns only a verified existing project/status, using the helper's own connection. `./ordering marketplace-config` derives its project automatically from that connection; an optional PROJECT argument is an assertion for diagnostics, never a required value typed by the customer. Identity/project are validated with MCP Read, then only public settings are exported. REST API keys are not used.
+
+`exportPublicMarketplaceConfig` configures an already selected public project without a key. It validates current/config/theme/catalog via public GETs and explicitly reports identity=false: public reads do not prove developer authentication. The caller validates the choice with a native MCP identity or the authenticated browser before invoking it. Website runtime never requires MCP or an administrative API key.
+
+Marketplace includes a pinned, restricted helper/exporter so its public clone is self-contained. Quickstart is now public at https://github.com/Ordering-co/ordering-dev-quickstart; it is optional for Website runtime. It detects an already installed launcher before asking for a new browser selection and never copies its credentials. The bundled project-login variant delivers only `{v:1,i,p,m:marketplace-project}` through the existing encrypted relay, after the browser checks identity/membership and the person consents/selects. No MCP/REST key is created. Its local `.marketplace-project.json` holds public project selection only; credential state is unchanged.
+
+API host/v400, app_id and socket come from the pinned repository contract; language uses ORDERING_LANG (en default). The effective socket is sockets-v3.orderingplus.com, forced by the pinned Marketplace SDK. Config/theme/catalog defaults are read publicly. Permissions/project/tenant, public config and actual browser runtime remain separate verification results.
