@@ -25,6 +25,8 @@ Browser pairing saves it privately through the helper. For manual setup, enter i
 
 `./ordering api` asks you to confirm any `POST`, `PUT`, `PATCH` or `DELETE`: by typing your project ID in the terminal, or, for an agent, with `--yes` after you approved that exact request in the chat.
 
+The helper exits with code 1 for HTTP errors or a top-level JSON `"error": true`, even with HTTP 200. It still prints the response with credentials redacted and adds a brief diagnostic on stderr.
+
 ## 3 · Build
 
 | Want to… | Use |

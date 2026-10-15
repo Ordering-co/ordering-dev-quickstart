@@ -94,6 +94,16 @@ class Handler(BaseHTTPRequestHandler):
         return (m.group(1), m.group(2) or "") if m else (None, None)
 
     def do_GET(self):
+        m = re.match(r"^/v400/[^/]+/[^/]+/__test/api/(error|success|400|500|string|nested)$", self.path)
+        if m:
+            case = m.group(1)
+            status = int(case) if case in ("400", "500") else 200
+            error = "true" if case == "string" else case in ("error", "400", "500")
+            return self.send(status, {"error": error, "result": {
+                "error": True,
+                "echo_api_key": self.headers.get("X-Api-Key") or "",
+                "echo_mcp_key": next(iter(KEYS), ""),
+            }})
         if re.match(r"^/v400/[^/]+/[^/]+/configs$", self.path):
             return self.send(200, {"error": False, "result": []})
         # The terminal verifies a delivered API key server-side with this call,
