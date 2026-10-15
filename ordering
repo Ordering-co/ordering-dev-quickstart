@@ -28,6 +28,13 @@ set -euo pipefail
 umask 077   # every file this script writes (.env, temporary keys) is private
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Public repository operations never enter credential/environment loading.
+if [ "${1:-}" = repos ]; then
+  shift
+  unset NODE_OPTIONS NODE_PATH
+  command -v node >/dev/null 2>&1 || { echo "Node.js 22+ is required for ordering repos" >&2; exit 1; }
+  exec node "$ROOT/scripts/catalog/cli.mjs" "$@"
+fi
 API_HOST="${ORDERING_API_HOST:-https://api.ordering.co}"
 case "$API_HOST" in
   https://api.ordering.co|http://127.0.0.1:*) ;;

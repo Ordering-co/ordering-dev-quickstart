@@ -58,6 +58,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Public product catalog tests (isolated local Git fixtures)
+        run: node --test tests/catalog.test.mjs
       - name: Login protocol tests
         run: bash tests/login.test.sh
 

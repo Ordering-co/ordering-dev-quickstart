@@ -23,6 +23,16 @@ If the developer wants to connect, follow [SETUP.md](SETUP.md) step by step.
 
 Browser confirmation means credential delivery, not client registration. Use `login start --install`, keep the pending terminal process ID, and collect its final result. Require authentication, a passing stdio `whoami` probe and client read-back verification before reporting installed clients. When installation fails after credentials were saved, retry `./ordering install` rather than creating a new pairing. Follow `SETUP.md` for client restarts and trust prompts. A launcher probe and config read-back do not prove an authenticated call inside each client; report these layers separately. Remote installation targets the terminal machine. Consult `docs/clients.md` for commands and limits.
 
+## Optional product setup after connection
+
+Once authentication, launcher and client registration checks are verified, offer once to download the seven public Ordering products; keep any client-side reload/runtime verification limit explicit. Ask in the developer's language, outside `login wait` and `install`. Respect an existing accept/skip answer. Skipping leaves Ordering setup complete; this offer must not create another login or turn Context7 into a prerequisite.
+
+If accepted, follow [docs/products.md](docs/products.md): clone the seven into the agreed directory, confirm the project and **configure all seven by default** through their public helpers. Ask once for a deliberately selected franchise when needed for the two franchise surfaces; do not pick the first item or ask which product to configure. Product configuration accepts an explicitly confirmed public project even without Ordering login and never reads/copies `.env` or agent credentials.
+
+Then ask only **which products to run locally**, recommending Website Marketplace + Dashboard together. Install dependencies and launch only those selected, following each runbook. Cloned, configured and running are distinct results. Missing franchise data, collisions or a failed helper require an honest partial report and recovery, not a success claim for all seven.
+
+The `repos` commands are standalone and non-interactive: use `--all` explicitly. Preserve existing product files, branches, remotes and SDK revisions; do not fetch, pull, reset, switch branches or repair an unidentified checkout automatically. Do not modify business data to prove onboarding. Keep all licence notices. The Quickstart's own safe update procedure in SETUP.md does not authorize updating the product checkouts.
+
 ## Using the Ordering.co MCP
 
 Tools: `whoami`, `search_operations`, `describe_operation`, `read_operation`, `write_operation`.
@@ -60,11 +70,11 @@ Context7 retrieves public documentation; the Ordering MCP reads or changes the c
 ## Repo map
 
 - `SETUP.md`: the setup runbook you follow.
-- `ordering`: bash helper (`login`, `init`, `doctor`, `install`, `clients`, `prepare`, `mcp`, `uninstall`, `claude`, `codex`, `cursor`, `code`, `api`, `spec`).
+- `ordering`: bash helper (`login`, `init`, `doctor`, `install`, `clients`, `prepare`, `mcp`, `uninstall`, `claude`, `codex`, `cursor`, `code`, `api`, `spec`, standalone `repos clone` / `repos configure`).
 - `.env.example`: template for `.env`. `.env` holds the developer's keys: never read, print or commit it.
 - `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`: MCP configs. They hold launcher paths only; keys are loaded by the helper at runtime.
 - `.claude/settings.json`: denies Claude Code access to `.env`.
 - `.gitleaks.toml`: secret-scanning rules used by CI.
 - `requests/`: example REST requests for VS Code REST Client.
 - `prompts/`: prompts developers paste into their agent.
-- `docs/`: credentials, security, troubleshooting.
+- `docs/`: credentials, security, troubleshooting and the seven-product guide (`products.md`).
