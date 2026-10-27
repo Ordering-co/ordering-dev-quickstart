@@ -21,7 +21,8 @@ cat > "$WORK/bin/gcloud" <<'FAKE'
 S="$FAKE_GCLOUD_STATE"; echo "$*" >> "$S/calls"
 case "$1 $2" in
   "auth list") cat "$S/account" 2>/dev/null ;;
-  "auth login") echo person@example.com > "$S/account" ;;
+  "auth login") echo person@example.com > "$S/account"; rm -f "$S/expired" ;;
+  "auth print-access-token") [ -f "$S/account" ] && [ ! -f "$S/expired" ] ;;
   "projects describe") [ -f "$S/project" ] ;;
   "projects create") echo "$3" > "$S/project" ;;
   "billing projects")
@@ -29,7 +30,7 @@ case "$1 $2" in
       describe) if [ -f "$S/linked" ]; then echo True; else echo False; fi ;;
       link) touch "$S/linked" ;;
     esac ;;
-  "billing accounts") cat "$S/accounts" 2>/dev/null ;;
+  "billing accounts") if [ -f "$S/billing_error" ]; then echo "ERROR: denied" >&2; exit 1; fi; cat "$S/accounts" 2>/dev/null ;;
   "services enable")
     case "$*" in *places-backend*|*distance-matrix-backend*) [ ! -f "$S/refuse_legacy" ] ;; esac ;;
   "services api-keys")
@@ -69,6 +70,14 @@ echo "# no billing account"
 fresh; : > "$STATE/accounts"; setup --yes
 check "it exits 3 so the person adds a payment method" '[ "$rc" = 3 ] && grep -q "console.cloud.google.com/billing/create" "$WORK/out"'
 check "it created nothing" '! grep -q "projects create" "$STATE/calls"'
+
+echo "# expired Google session"
+fresh; echo person@example.com > "$STATE/account"; touch "$STATE/expired"; setup
+check "an expired session signs in again before reading billing" 'grep -q "^auth login" "$STATE/calls" && ! grep -q "no open billing account" "$WORK/out"'
+
+echo "# billing accounts cannot be listed"
+fresh; touch "$STATE/billing_error"; setup --yes
+check "a listing error is an error, not 'no billing account'" '[ "$rc" = 1 ] && grep -q "Could not list your Google billing accounts" "$WORK/out" && ! grep -q "billing/create" "$WORK/out"'
 
 echo "# several billing accounts"
 fresh; printf 'AAAAAA-AAAAAA-AAAAAA\tOne\nBBBBBB-BBBBBB-BBBBBB\tTwo\n' > "$STATE/accounts"; setup --yes

@@ -1220,7 +1220,8 @@ cmd_google_maps() {
   title "Google account"
   local account
   account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)"
-  if [ -z "$account" ]; then
+  # An expired session is still listed as active, so ask for a token too.
+  if [ -z "$account" ] || ! gcloud auth print-access-token >/dev/null 2>&1; then
     echo "Sign in to Google in the browser window that opens."
     gcloud auth login >&2 || die "Google sign-in did not finish."
     account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)"
@@ -1235,8 +1236,12 @@ cmd_google_maps() {
     if [ "$(gcloud billing projects describe "$gcp" --format='value(billingEnabled)' 2>/dev/null)" = True ]; then billing_on=1; fi
   fi
   if [ -z "$billing_on" ] && [ -z "$billing" ]; then
-    local accounts n
-    accounts="$(gcloud billing accounts list --filter=open=true --format='value(name.basename(),displayName)' 2>/dev/null || true)"
+    local accounts n err
+    err="$(tmpfile)"
+    if ! accounts="$(gcloud billing accounts list --filter=open=true --format='value(name.basename(),displayName)' 2>"$err")"; then
+      sed 's/^/    /' "$err" >&2
+      die "Could not list your Google billing accounts."
+    fi
     n="$(printf '%s' "$accounts" | grep -c . || true)"
     # Exit 3: only the person can continue (Google requires a payment method added in the browser).
     if [ "$n" = 0 ]; then
