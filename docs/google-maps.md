@@ -41,12 +41,15 @@ Every API that the Ordering products and the core API call with `google_maps_api
 | Time Zone API | `timezone-backend.googleapis.com` | Business time zones in the Dashboard |
 | Distance Matrix API (legacy) | `distance-matrix-backend.googleapis.com` | Delivery distances in the core API |
 | Address Validation API | `addressvalidation.googleapis.com` | Address checks in the call center, through the core API |
+| Geolocation API | `geolocation.googleapis.com` | Locating the customer in the AI webchat |
+| Routes API | `routes.googleapis.com` | Routes and travel times for delivery logistics, such as automatic driver assignment |
+| Directions API (legacy) | `directions-backend.googleapis.com` | The same logistics features where they still use the legacy API |
 | Maps SDK for Android | `maps-android-backend.googleapis.com` | Maps in the Android apps, if you reuse this key in your builds |
 | Maps SDK for iOS | `maps-ios-backend.googleapis.com` | Maps in the iOS apps, if you reuse this key in your builds |
 
-Not enabled, because no product calls them: Directions and Routes, Roads, Elevation, Street View and Geolocation. Google sign-in (`google_login_client_id`) is an OAuth client, not an API key, and is not set up by this command.
+Not enabled, because no product calls them: Roads, Elevation and Street View. Google sign-in (`google_login_client_id`) is an OAuth client, not an API key, and is not set up by this command.
 
-Google has marked Places API and Distance Matrix API as legacy and may refuse to enable them on new projects. The command then warns you and continues; the features that still call them may not work until the products move to the newer APIs.
+Google has marked Places API, Distance Matrix API and Directions API as legacy and may refuse to enable them on new projects. The command then warns you and continues; the features that still call them may not work until the products move to the newer APIs.
 
 ## Restrictions and costs
 
