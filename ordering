@@ -1189,13 +1189,16 @@ cmd_google_maps() {
     esac
   done
   require_project
-  [ -n "${ORDERING_API_KEY:-}" ] || die "ORDERING_API_KEY is empty. It saves the Maps key in your project: add it to .env (see .env.example)."
+  [ -n "${ORDERING_API_KEY:-}" ] || die "The REST API credential is missing, and it saves the Maps key in your project. Run ./ordering reset and keep the REST API box checked when you sign in."
   MAPS_HOST="${ORDERING_MAPS_HOST:-https://maps.googleapis.com}"
   case "$MAPS_HOST" in
     https://maps.googleapis.com|http://127.0.0.1:*) ;;
     *) die "ORDERING_MAPS_HOST must be https://maps.googleapis.com (or http://127.0.0.1 for tests)" ;;
   esac
-  have gcloud || die "The Google Cloud CLI (gcloud) is required. Install it: https://cloud.google.com/sdk/docs/install"
+  if ! have gcloud; then
+    if have brew; then die "The Google Cloud CLI (gcloud) is required. Install it with: brew install --cask gcloud-cli"; fi
+    die "The Google Cloud CLI (gcloud) is required. Install it: https://cloud.google.com/sdk/docs/install"
+  fi
 
   if [ -z "$gcp" ]; then
     gcp="ordering-maps-$(printf '%s' "$ORDERING_PROJECT" | tr '_' '-' | tr -cd 'a-z0-9-')"

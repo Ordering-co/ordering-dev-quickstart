@@ -10,6 +10,8 @@ The agent follows [SETUP.md](../SETUP.md): it obtains a browser link and verific
 
 After your Ordering connection is verified, the agent offers once to download the seven products. Accepting configures all seven for your confirmed project; a franchise choice is requested once when needed. Then choose which products to run locally, with Website Marketplace + Dashboard recommended. [Products guide](../docs/products.md) · [Product-only prompt](30-run-ordering-products.md).
 
+It also offers to create your own Google Maps key in your Google Cloud account and save it in this project: [Google Maps guide](../docs/google-maps.md) · [Prompt when already connected](40-google-maps-key.md).
+
 ## Also set up Context7 (optional, recommended for development with AI)
 
 Use this if you want the optional setup as well:

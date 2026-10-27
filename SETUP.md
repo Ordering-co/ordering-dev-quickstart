@@ -163,6 +163,20 @@ After steps 3–5 have verified Ordering and provided the first-query menu, reco
 - Query `/openapi/ordering_co_api-reference_openapi_json` for `GET /usage_limits` and `/llmstxt/ordering_co_llms-small_txt` for MCP installation and permissions. Require returned documentation to cite `https://docs.ordering.co/`; for the API answer check the exact method/path against `./ordering spec`. Querying these libraries does not require a call to the developer's Ordering data.
 - If Context7 setup or either documentation query fails, report that result separately and continue using the public API Reference and docs. The verified Ordering connection remains usable.
 
+## 8. Optional: their own Google Maps key
+
+Maps, address autocomplete and delivery distances in the products need `google_maps_api_key`. This step guides the person to create it in their own Google Cloud account and saves it in the project they just connected: it reuses `ORDERING_PROJECT` and the REST credential from step 2, so it never needs another Ordering sign-in. Follow [docs/google-maps.md](docs/google-maps.md).
+
+After the steps above are verified, offer it once: “Would you also like me to set up your own Google Maps key? You only sign in to Google in your browser, and Google bills Maps usage to you.” Respect a decline or an earlier answer. If the person arrives already connected and asks for it, start here.
+
+1. **Connection:** `./ordering doctor` must show the project and `✔ API key … accepted`. If the REST credential is missing (the box was unchecked), explain that it is needed to save the key and offer `./ordering reset`, keeping the REST box checked.
+2. **Google Cloud CLI:** check `gcloud --version`. If it is missing, offer to install it (`brew install --cask gcloud-cli` on macOS with Homebrew, otherwise the [official installer](https://cloud.google.com/sdk/docs/install)) and install it only after a yes.
+3. **First run, no changes:** `./ordering google-maps setup`. If a browser window or link appears, tell the person to sign in with the Google account that should own and pay for the key, and relay the link only to them.
+4. **If it exits 3, guide billing:** with no billing account, tell them to open the link it printed, create a billing account (country and a payment card; Google includes monthly free usage per API), then say “done” so you run step 3 again. With several, show the list and ask which one to use for `--billing-account`. Never choose for them.
+5. **If a key already exists:** tell them the masked key it reported and that `--replace` switches the project to their own key; continue only if they agree.
+6. **Confirm:** show the “This will” summary in their language and wait for an explicit yes. Then run the same command with `--yes` (plus the agreed `--replace` / `--billing-account`).
+7. **Report** what the command reported: project, billing link, enabled APIs, any legacy API warning, and “saved … (read back)”. Exit 1 after the key was created only needs a rerun. Never print or fetch the key.
+
 ## If the REST API checkbox stayed checked (the default)
 
 `doctor` in step 3 will show `✔ API key … accepted` in its REST API section. From here on, reach the REST API only through `~/ordering-dev-quickstart/ordering api`, never with a raw `curl` using the key:

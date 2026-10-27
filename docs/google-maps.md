@@ -4,10 +4,15 @@ Maps, address autocomplete, delivery zones and distances in the Ordering product
 
 You only sign in to Google in your browser. The one thing Google does not allow any tool to do for you is add a payment method: if your Google account has no billing account yet, the command stops and gives you the link to add one.
 
+## Two ways to start
+
+- **New to the quickstart:** paste [the setup prompt](../prompts/00-setup.md). After your Ordering connection is verified, your agent offers this step ([SETUP.md step 8](../SETUP.md#8-optional-their-own-google-maps-key)).
+- **Already connected:** paste [the Google Maps prompt](../prompts/40-google-maps-key.md), or run the command yourself. It uses the project and REST credential you already have; no new Ordering sign-in.
+
 ## Before you start
 
-- The Google Cloud CLI: [install `gcloud`](https://cloud.google.com/sdk/docs/install). You do not need to configure it; the command signs you in.
-- `ORDERING_PROJECT` and `ORDERING_API_KEY` in `.env` (the REST credential from `./ordering login`, from an administrator). The key is saved through the REST API.
+- The Google Cloud CLI: `brew install --cask gcloud-cli` on macOS, or [the official installer](https://cloud.google.com/sdk/docs/install). You do not need to configure it; the command signs you in.
+- Your quickstart connection with the REST credential (the default when you sign in, as an administrator). The key is saved through the REST API. If you unchecked it, run `./ordering reset` and keep it checked.
 - A Google account that can create projects. A Google Workspace organization can restrict this; ask its administrator if project creation is refused.
 
 ## Run it
