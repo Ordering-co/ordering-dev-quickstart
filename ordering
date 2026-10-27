@@ -1112,8 +1112,9 @@ cmd_spec() {
 
 # ---------------------------------------------------------------- Google Maps
 
-# Every Google API that the seven products and the core API call with google_maps_api_key.
-MAPS_SERVICES="maps-backend.googleapis.com places.googleapis.com geocoding-backend.googleapis.com static-maps-backend.googleapis.com timezone-backend.googleapis.com maps-android-backend.googleapis.com maps-ios-backend.googleapis.com"
+# Every Google API that the products and the core API call with google_maps_api_key
+# (inventory and sources in docs/google-maps.md).
+MAPS_SERVICES="maps-backend.googleapis.com places.googleapis.com geocoding-backend.googleapis.com static-maps-backend.googleapis.com timezone-backend.googleapis.com addressvalidation.googleapis.com maps-android-backend.googleapis.com maps-ios-backend.googleapis.com"
 # Legacy APIs the products still call. Google can refuse them on new projects, so they are best effort.
 MAPS_LEGACY_SERVICES="places-backend.googleapis.com distance-matrix-backend.googleapis.com"
 MAPS_KEY_NAME="Ordering Maps"

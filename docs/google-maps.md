@@ -29,15 +29,22 @@ Running it again is safe: it reuses the project and the key and updates the key'
 
 ## What gets enabled
 
-| API | Used for |
-|---|---|
-| Maps JavaScript API | Maps in the websites and the Dashboard |
-| Places API (New) and Places API | Address autocomplete and place search |
-| Geocoding API | Addresses to coordinates, in the browser and in the core API |
-| Maps Static API | Static map images in the products |
-| Time Zone API | Business time zones in the Dashboard |
-| Distance Matrix API | Delivery distances in the core API |
-| Maps SDK for Android and for iOS | Maps in the mobile apps, if you reuse this key in your builds |
+Every API that the Ordering products and the core API call with `google_maps_api_key`:
+
+| API | Service name | Used for |
+|---|---|---|
+| Maps JavaScript API | `maps-backend.googleapis.com` | Maps in the websites, Dashboard, call center and kiosks, including drawn delivery zones and heatmaps |
+| Places API (New) | `places.googleapis.com` | Address suggestions and nearby search in the Dashboard and websites |
+| Places API (legacy) | `places-backend.googleapis.com` | The address autocomplete widget everywhere, and place autocomplete/details in the apps |
+| Geocoding API | `geocoding-backend.googleapis.com` | Addresses ↔ coordinates in the browser, the apps and the core API |
+| Maps Static API | `static-maps-backend.googleapis.com` | Static map images in orders |
+| Time Zone API | `timezone-backend.googleapis.com` | Business time zones in the Dashboard |
+| Distance Matrix API (legacy) | `distance-matrix-backend.googleapis.com` | Delivery distances in the core API |
+| Address Validation API | `addressvalidation.googleapis.com` | Address checks in the call center, through the core API |
+| Maps SDK for Android | `maps-android-backend.googleapis.com` | Maps in the Android apps, if you reuse this key in your builds |
+| Maps SDK for iOS | `maps-ios-backend.googleapis.com` | Maps in the iOS apps, if you reuse this key in your builds |
+
+Not enabled, because no product calls them: Directions and Routes, Roads, Elevation, Street View and Geolocation. Google sign-in (`google_login_client_id`) is an OAuth client, not an API key, and is not set up by this command.
 
 Google has marked Places API and Distance Matrix API as legacy and may refuse to enable them on new projects. The command then warns you and continues; the features that still call them may not work until the products move to the newer APIs.
 
