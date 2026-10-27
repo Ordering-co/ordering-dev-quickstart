@@ -3,8 +3,10 @@
 Implements docs/login-protocol.md with the validation rules the production
 relay on docs.ordering.co must apply. It also fakes the core-API pieces the
 terminal touches, for tests only: MCP key creation (POST /__test/keys), API key
-creation (POST /__test/apikeys), the MCP `whoami` tool (POST /mcp/<project>), and
-GET /v400/<lang>/<project>/users/me (the server-side check for an API key).
+creation (POST /__test/apikeys), the MCP `whoami` tool (POST /mcp/<project>),
+GET /v400/<lang>/<project>/users/me (the server-side check for an API key), the
+google_maps_api_key setting (GET /configs, PUT /configs/42, POST /__test/maps-config)
+and the Geocoding API (GET /maps/api/geocode/json).
 
 Usage: python3 tests/relay_mock.py <port>
 """
@@ -16,6 +18,7 @@ import re
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 TTL = 600
 MAX_BODY = 4096
@@ -29,6 +32,8 @@ RSA2048_E65537_TAIL = bytes.fromhex("0203010001")
 PAIRINGS = {}
 KEYS = {}  # test-only: MCP key -> {"name", "project"}
 APIKEYS = {}  # test-only: API key -> {"project", "user_id"}
+MAPS_CONFIG = {"id": 42, "key": "google_maps_api_key", "value": ""}  # test-only project setting
+MAPS_KEY = re.compile(r"^AIza[0-9A-Za-z_-]{35}$")
 
 
 def b64url_decode(value):
@@ -105,7 +110,11 @@ class Handler(BaseHTTPRequestHandler):
                 "echo_mcp_key": next(iter(KEYS), ""),
             }})
         if re.match(r"^/v400/[^/]+/[^/]+/configs$", self.path):
-            return self.send(200, {"error": False, "result": []})
+            return self.send(200, {"error": False, "result": [MAPS_CONFIG]})
+        # Fakes the Geocoding API for ./ordering google-maps: any well-formed key is accepted.
+        if self.path.startswith("/maps/api/geocode/json?"):
+            key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
+            return self.send(200, {"status": "ZERO_RESULTS" if MAPS_KEY.match(key) else "REQUEST_DENIED"})
         # The terminal verifies a delivered API key server-side with this call,
         # the same way the real core API would: the key must exist and belong
         # to the project in the URL, and the response carries its owner's id.
@@ -124,6 +133,12 @@ class Handler(BaseHTTPRequestHandler):
             if not body:
                 return self.send(400, {"error": "invalid"})
             KEYS[body["key"]] = {"name": body["name"], "project": body["project"]}
+            return self.send(204)
+        if self.path == "/__test/maps-config":
+            body = self.read_json(["value"])
+            if body is None:
+                return self.send(400, {"error": "invalid"})
+            MAPS_CONFIG["value"] = body["value"]
             return self.send(204)
         if self.path == "/__test/apikeys":
             body = self.read_json(["key", "project", "user_id"])
@@ -218,6 +233,16 @@ class Handler(BaseHTTPRequestHandler):
             del PAIRINGS[pid]
             return self.send(200, {"ciphertext": ct})
         return self.send(404, {"error": "not_found"})
+
+    def do_PUT(self):
+        if re.match(r"^/v400/[^/]+/[^/]+/configs/42$", self.path):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length)) if 0 < length <= MAX_BODY else {}
+            if not isinstance(body, dict) or not isinstance(body.get("value"), str):
+                return self.send(400, {"error": True, "result": ["invalid"]})
+            MAPS_CONFIG["value"] = body["value"]
+            return self.send(200, {"error": False, "result": MAPS_CONFIG})
+        self.send(405, {"error": "method_not_allowed"})
 
     def log_message(self, *args):
         pass

@@ -21,8 +21,14 @@
 #                                Call the REST API (non-GET requests ask for confirmation,
 #                                or pass --yes once a person approved this exact request)
 #   ./ordering spec              Download the current OpenAPI spec to spec/openapi.json
+#   ./ordering google-maps setup [--gcp-project ID] [--billing-account ID] [--replace] [--yes]
+#                                Create a Google Maps key in your own Google Cloud account and
+#                                save it in your project (see docs/google-maps.md)
+#   ./ordering google-maps restore [--yes]
+#                                Put back the key that setup replaced
 #
 # Requirements: bash and curl. jq or python3 for doctor and pretty output.
+# google-maps also needs the Google Cloud CLI (gcloud).
 
 set -euo pipefail
 umask 077   # every file this script writes (.env, temporary keys) is private
@@ -1106,10 +1112,281 @@ cmd_spec() {
   ok "Saved spec/openapi.json${n:+ ($n operations)}. Import it in Postman, or generate a typed client from it."
 }
 
+# ---------------------------------------------------------------- Google Maps
+
+# Every Google API that the products and the core API call with google_maps_api_key
+# (inventory and sources in docs/google-maps.md).
+MAPS_SERVICES="maps-backend.googleapis.com places.googleapis.com geocoding-backend.googleapis.com static-maps-backend.googleapis.com timezone-backend.googleapis.com addressvalidation.googleapis.com geolocation.googleapis.com routes.googleapis.com maps-android-backend.googleapis.com maps-ios-backend.googleapis.com"
+# Legacy APIs the products still call. Google can refuse them on new projects, so they are best effort.
+MAPS_LEGACY_SERVICES="places-backend.googleapis.com distance-matrix-backend.googleapis.com directions-backend.googleapis.com"
+MAPS_KEY_NAME="Ordering Maps"
+
+# maps_config_field <GET /configs body> <field>: that field of the google_maps_api_key setting
+maps_config_field() {
+  if have jq; then
+    printf '%s' "$1" | jq -r --arg f "$2" \
+      'first(.result[]? | select(.key == "google_maps_api_key") | .[$f]) // empty | tostring' 2>/dev/null || true
+  elif have python3; then
+    printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    for c in json.load(sys.stdin).get("result") or []:
+        if c.get("key") == "google_maps_api_key":
+            v = c.get(sys.argv[1])
+            print("" if v is None else v)
+            break
+except Exception:
+    pass
+' "$2"
+  fi
+}
+
+# maps_config: sets MAPS_CONFIG_ID and MAPS_CONFIG_VALUE from the project settings
+MAPS_CONFIG_ID=""; MAPS_CONFIG_VALUE=""
+maps_config() {
+  http -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json" "$(api_base)/configs"
+  if [ "$HTTP_CODE" != 200 ] || [ "$(json_get "$HTTP_BODY" error)" != false ]; then
+    die "Could not read the project settings (HTTP $HTTP_CODE). Run ./ordering doctor."
+  fi
+  MAPS_CONFIG_ID="$(maps_config_field "$HTTP_BODY" id)"
+  MAPS_CONFIG_VALUE="$(maps_config_field "$HTTP_BODY" value)"
+}
+
+# maps_key_works <key>: one Geocoding request. The key travels in a curl config file, never in argv.
+maps_key_works() {
+  local cfg status
+  cfg="$(tmpfile)"
+  printf 'url = "%s/maps/api/geocode/json?latlng=0,0&key=%s"\n' "$MAPS_HOST" "$1" > "$cfg"
+  http -K "$cfg"
+  status="$(json_get "$HTTP_BODY" status)"
+  [ "$status" = OK ] || [ "$status" = ZERO_RESULTS ]
+}
+
+# gcloud_write args...: runs a gcloud change, showing its output only when it fails
+# (a successful key creation prints the key itself).
+gcloud_write() {
+  local err; err="$(tmpfile)"
+  gcloud "$@" --quiet >/dev/null 2>"$err" && return 0
+  sed 's/^/    /' "$err" >&2
+  return 1
+}
+
+maps_key_name() {
+  gcloud services api-keys list --project="$1" --filter="displayName='$MAPS_KEY_NAME'" \
+    --format='value(name)' 2>/dev/null | head -1 || true
+}
+
+# The key that setup replaced: the first one only, so repeated runs keep the original.
+MAPS_BACKUP="$ROOT/.google-maps-previous-key"
+
+# maps_confirm <yes flag> <what>: a person at a tty types the project ID, or an agent passed --yes
+maps_confirm() {
+  if [ -n "$1" ]; then
+    printf 'CONFIRMED google-maps %s on %s\n' "$2" "$ORDERING_PROJECT" >&2
+  elif [ -t 0 ] && [ -r /dev/tty ]; then
+    printf 'Type the project ID to confirm: ' >/dev/tty
+    local answer; IFS= read -r answer </dev/tty
+    [ "$answer" = "$ORDERING_PROJECT" ] || die "Not confirmed. Nothing was changed."
+  else
+    die "This changes your project: run it yourself at an interactive terminal, or pass --yes after the person approved it in the chat."
+  fi
+}
+
+# maps_save <key>: writes google_maps_api_key and reads it back; returns 1 if the write failed
+maps_save() {
+  local body; body="$(tmpfile)"
+  printf '{"value":"%s"}' "$1" > "$body"
+  audit_log PUT "/configs/$MAPS_CONFIG_ID" "@$body"
+  http -X PUT -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json" \
+    -H "Content-Type: application/json" --data-binary "@$body" "$(api_base)/configs/$MAPS_CONFIG_ID"
+  if [ "$HTTP_CODE" != 200 ] || [ "$(json_get "$HTTP_BODY" error)" != false ]; then return 1; fi
+  maps_config
+  if [ "$MAPS_CONFIG_VALUE" = "$1" ]; then
+    ok "Saved as google_maps_api_key in $ORDERING_PROJECT (read back)"
+  elif [ "$MAPS_CONFIG_VALUE" = PROTECT ]; then
+    warn "Saved, but the project hides this setting, so it could not be read back."
+  else
+    die "The project returned a different google_maps_api_key after saving."
+  fi
+}
+
+cmd_google_maps_restore() {
+  [ "${1:-}" = "" ] || [ "$1" = --yes ] || die "Usage: ./ordering google-maps restore [--yes]"
+  require_project
+  [ -n "${ORDERING_API_KEY:-}" ] || die "The REST API credential is missing. Run ./ordering reset and keep the REST API box checked when you sign in."
+  [ -s "$MAPS_BACKUP" ] || die "There is no previous key to restore in this folder."
+  local previous; previous="$(head -1 "$MAPS_BACKUP")"
+  maps_config
+  [ -n "$MAPS_CONFIG_ID" ] || die "This project has no google_maps_api_key setting. Contact Ordering.co support."
+  if [ "$MAPS_CONFIG_VALUE" = "$previous" ]; then ok "The project already uses the previous key $(mask "$previous")"; return; fi
+  title "This will"
+  echo "  • replace google_maps_api_key $(mask "$MAPS_CONFIG_VALUE") with the previous key $(mask "$previous") in $ORDERING_PROJECT (production)"
+  maps_confirm "${1:-}" restore
+  maps_save "$previous" || die "Ordering did not save the key (HTTP $HTTP_CODE). Run this command again."
+  hint "Your own key still exists in Google Cloud; delete its project there if you no longer need it."
+}
+
+cmd_google_maps() {
+  local usage_line="Usage: ./ordering google-maps setup [--gcp-project ID] [--billing-account ID] [--replace] [--yes]
+       ./ordering google-maps restore [--yes]"
+  case "${1:-}" in
+    setup) shift ;;
+    restore) shift; cmd_google_maps_restore "$@"; return ;;
+    *) die "$usage_line" ;;
+  esac
+  local gcp="" billing="" replace="" yes=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --gcp-project)     [ $# -ge 2 ] || die "$usage_line"; gcp="$2"; shift 2 ;;
+      --billing-account) [ $# -ge 2 ] || die "$usage_line"; billing="${2#billingAccounts/}"; shift 2 ;;
+      --replace) replace=1; shift ;;
+      --yes) yes=1; shift ;;
+      *) die "$usage_line" ;;
+    esac
+  done
+  require_project
+  [ -n "${ORDERING_API_KEY:-}" ] || die "The REST API credential is missing, and it saves the Maps key in your project. Run ./ordering reset and keep the REST API box checked when you sign in."
+  MAPS_HOST="${ORDERING_MAPS_HOST:-https://maps.googleapis.com}"
+  case "$MAPS_HOST" in
+    https://maps.googleapis.com|http://127.0.0.1:*) ;;
+    *) die "ORDERING_MAPS_HOST must be https://maps.googleapis.com (or http://127.0.0.1 for tests)" ;;
+  esac
+  if ! have gcloud; then
+    if have brew; then die "The Google Cloud CLI (gcloud) is required. Install it with: brew install --cask gcloud-cli"; fi
+    die "The Google Cloud CLI (gcloud) is required. Install it: https://cloud.google.com/sdk/docs/install"
+  fi
+
+  if [ -z "$gcp" ]; then
+    gcp="ordering-maps-$(printf '%s' "$ORDERING_PROJECT" | tr '_' '-' | tr -cd 'a-z0-9-')"
+    gcp="${gcp:0:30}"
+    while [ "${gcp%-}" != "$gcp" ]; do gcp="${gcp%-}"; done
+  fi
+  [[ "$gcp" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || die "Invalid Google Cloud project ID '$gcp': use 6-30 lowercase letters, digits or hyphens."
+  [ -z "$billing" ] || [[ "$billing" =~ ^[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}$ ]] || die "Invalid billing account ID '$billing': it looks like 0X0X0X-0X0X0X-0X0X0X."
+
+  # Everything up to the confirmation only reads.
+  title "Ordering project $ORDERING_PROJECT"
+  maps_config
+  [ -n "$MAPS_CONFIG_ID" ] || die "This project has no google_maps_api_key setting. Contact Ordering.co support."
+  if [ -n "$MAPS_CONFIG_VALUE" ]; then ok "Current google_maps_api_key: $(mask "$MAPS_CONFIG_VALUE")"; else ok "No google_maps_api_key yet"; fi
+
+  title "Google account"
+  local account
+  account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)"
+  # An expired session is still listed as active, so ask for a token too.
+  if [ -z "$account" ] || ! gcloud auth print-access-token >/dev/null 2>&1; then
+    echo "Sign in to Google in the browser window that opens."
+    gcloud auth login >&2 || die "Google sign-in did not finish."
+    account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)"
+    [ -n "$account" ] || die "Google sign-in did not finish."
+  fi
+  ok "Signed in as $account"
+
+  title "Google Cloud project $gcp"
+  local exists="" billing_on=""
+  if gcloud projects describe "$gcp" --format='value(projectId)' >/dev/null 2>&1; then
+    exists=1
+    if [ "$(gcloud billing projects describe "$gcp" --format='value(billingEnabled)' 2>/dev/null)" = True ]; then billing_on=1; fi
+  fi
+  if [ -z "$billing_on" ] && [ -z "$billing" ]; then
+    local accounts n err
+    err="$(tmpfile)"
+    if ! accounts="$(gcloud billing accounts list --filter=open=true --format='value(name.basename(),displayName)' 2>"$err")"; then
+      sed 's/^/    /' "$err" >&2
+      die "Could not list your Google billing accounts."
+    fi
+    n="$(printf '%s' "$accounts" | grep -c . || true)"
+    # Exit 3: only the person can continue (Google requires a payment method added in the browser).
+    if [ "$n" = 0 ]; then
+      warn "Your Google account has no open billing account, and Google Maps needs one."
+      hint "Add a payment method here, then run this command again: https://console.cloud.google.com/billing/create"
+      exit 3
+    elif [ "$n" -gt 1 ]; then
+      warn "Your Google account has $n billing accounts. Choose one and run again with --billing-account ID:"
+      printf '%s\n' "$accounts" | sed 's/^/    /'
+      exit 3
+    fi
+    billing="$(printf '%s' "$accounts" | cut -f1)"
+  fi
+
+  title "This will"
+  if [ -n "$exists" ]; then echo "  • reuse the Google Cloud project $gcp"; else echo "  • create the Google Cloud project $gcp as $account"; fi
+  if [ -n "$billing_on" ]; then echo "  • keep its billing account"; else echo "  • link it to the billing account $billing (Google bills Maps usage there)"; fi
+  echo "  • enable the Google Maps APIs the Ordering products use"
+  echo "  • create or update the API key \"$MAPS_KEY_NAME\", limited to those APIs"
+  if [ -n "$MAPS_CONFIG_VALUE" ]; then
+    echo "  • replace google_maps_api_key $(mask "$MAPS_CONFIG_VALUE") in the Ordering project $ORDERING_PROJECT (production)"
+  else
+    echo "  • save it as google_maps_api_key in the Ordering project $ORDERING_PROJECT (production)"
+  fi
+  if [ -n "$MAPS_CONFIG_VALUE" ] && [ -z "$replace" ]; then
+    die "The project already has a Google Maps key. Run the same command with --replace to switch it to your own key."
+  fi
+  maps_confirm "$yes" setup
+
+  title "Setting up"
+  if [ -z "$exists" ]; then
+    gcloud_write projects create "$gcp" --name="$MAPS_KEY_NAME" \
+      || die "Could not create $gcp. If the ID is taken, choose another with --gcp-project."
+    ok "Created the project $gcp"
+  fi
+  if [ -z "$billing_on" ]; then
+    gcloud_write billing projects link "$gcp" --billing-account="$billing" \
+      || die "Could not link the billing account $billing. You need the Billing Account User role on it."
+    ok "Linked the billing account $billing"
+  fi
+  local targets=() s
+  for s in $MAPS_SERVICES; do targets+=("--api-target=service=$s"); done
+  # shellcheck disable=SC2086 # a space-separated list of service names
+  gcloud_write services enable $MAPS_SERVICES --project="$gcp" || die "Could not enable the Google Maps APIs."
+  for s in $MAPS_LEGACY_SERVICES; do
+    if gcloud services enable "$s" --project="$gcp" --quiet >/dev/null 2>&1; then
+      targets+=("--api-target=service=$s")
+    else
+      warn "Google did not enable the legacy $s on this project; features that still call it may fail."
+    fi
+  done
+  ok "Enabled the Google Maps APIs"
+
+  local name key i
+  name="$(maps_key_name "$gcp")"
+  if [ -n "$name" ]; then
+    gcloud_write services api-keys update "$name" "${targets[@]}" || die "Could not update the API key restrictions."
+    ok "Updated the API key \"$MAPS_KEY_NAME\""
+  else
+    gcloud_write services api-keys create --project="$gcp" --display-name="$MAPS_KEY_NAME" "${targets[@]}" \
+      || die "Could not create the API key."
+    name="$(maps_key_name "$gcp")"
+    [ -n "$name" ] || die "Google created the key but did not list it. Run this command again."
+    ok "Created the API key \"$MAPS_KEY_NAME\""
+  fi
+  key="$(gcloud services api-keys get-key-string "$name" --format='value(keyString)' 2>/dev/null)" || key=""
+  [[ "$key" =~ ^AIza[0-9A-Za-z_-]{35}$ ]] || die "Google did not return a valid API key."
+
+  # Newly enabled APIs can take a few minutes to accept a key: about two minutes of retries.
+  for ((i = 1; ; i++)); do
+    maps_key_works "$key" && break
+    [ "$i" -lt 12 ] || die "Google still rejects the key ($(json_get "$HTTP_BODY" status)). Wait a few minutes and run this command again."
+    sleep 10
+  done
+  ok "Google accepts the key $(mask "$key")"
+
+  if [ "$MAPS_CONFIG_VALUE" = "$key" ]; then
+    ok "The project already uses this key"
+  else
+    if [ -n "$MAPS_CONFIG_VALUE" ] && [ "$MAPS_CONFIG_VALUE" != PROTECT ] && [ ! -s "$MAPS_BACKUP" ]; then
+      printf '%s\n' "$MAPS_CONFIG_VALUE" > "$MAPS_BACKUP"
+      ok "Kept the previous key $(mask "$MAPS_CONFIG_VALUE") in .google-maps-previous-key (./ordering google-maps restore puts it back)"
+    fi
+    maps_save "$key" || die "Ordering did not save the key (HTTP $HTTP_CODE). The key is ready in Google Cloud: run this command again."
+  fi
+  hint "Manage the key and its usage: https://console.cloud.google.com/google/maps-apis/credentials?project=$gcp"
+}
+
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
@@ -1133,6 +1410,7 @@ case "$cmd" in
   cursor|code)   cmd_editor "$cmd" "$@" ;;
   api)           cmd_api "$@" ;;
   spec)          cmd_spec ;;
+  google-maps)   cmd_google_maps "$@" ;;
   help|-h|--help) usage ;;
   *)             usage; exit 1 ;;
 esac

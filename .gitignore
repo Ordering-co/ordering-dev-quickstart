@@ -18,6 +18,9 @@ Thumbs.db
 # ./ordering api audit log (method, path and body hash, no secrets)
 .api-audit.log
 
+# ./ordering google-maps setup: the key it replaced, for google-maps restore
+.google-maps-previous-key
+
 # Locked installer runtime and private client configuration backups
 .clients/
 node_modules/
