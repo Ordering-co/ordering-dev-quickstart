@@ -74,6 +74,18 @@ Try: “Use Context7 library /openapi/ordering_co_api-reference_openapi_json to 
 
 &nbsp;
 
+## 6 · Optional · Your own Google Maps key
+
+Create the Google Maps key your products use in your own Google Cloud account, billed to you, and save it in your project. You only sign in to Google in your browser; if you have no Google billing account yet, you add a payment method once.
+
+```bash
+./ordering google-maps setup
+```
+
+Requires the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) and the REST credential from sign-in. [How it works, what it enables and costs](docs/google-maps.md) · [Prompt for your agent](prompts/40-google-maps-key.md)
+
+&nbsp;
+
 ---
 
 <sub>

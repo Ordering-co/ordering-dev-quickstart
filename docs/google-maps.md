@@ -1,0 +1,60 @@
+# Your own Google Maps key
+
+Maps, address autocomplete, delivery zones and distances in the Ordering products use the project setting `google_maps_api_key`. `./ordering google-maps setup` creates that key in **your own** Google Cloud account and saves it in your project, so Google bills Maps usage to you directly and you can see it in your Google console.
+
+You only sign in to Google in your browser. The one thing Google does not allow any tool to do for you is add a payment method: if your Google account has no billing account yet, the command stops and gives you the link to add one.
+
+## Before you start
+
+- The Google Cloud CLI: [install `gcloud`](https://cloud.google.com/sdk/docs/install). You do not need to configure it; the command signs you in.
+- `ORDERING_PROJECT` and `ORDERING_API_KEY` in `.env` (the REST credential from `./ordering login`, from an administrator). The key is saved through the REST API.
+- A Google account that can create projects. A Google Workspace organization can restrict this; ask its administrator if project creation is refused.
+
+## Run it
+
+```bash
+cd ~/ordering-dev-quickstart
+./ordering google-maps setup
+```
+
+1. **Reads** your project's current `google_maps_api_key`. If one is already set, it stops unless you pass `--replace`, so it never overwrites a working key by surprise.
+2. **Signs you in to Google** in your browser (`gcloud auth login`), unless you already are.
+3. **Checks billing.** With no open billing account it stops with exit code 3 and the link to [add a payment method](https://console.cloud.google.com/billing/create); run the command again afterwards. With several, it lists them and asks you to choose one with `--billing-account`.
+4. **Shows what it will change** and asks you to type your project ID (agents pass `--yes` only after you approve in the chat).
+5. **Creates or reuses** the Google Cloud project `ordering-maps-<your project>` (choose another ID with `--gcp-project`) and links the billing account.
+6. **Enables the Maps APIs** the products use and creates the API key **Ordering Maps**, restricted to those APIs.
+7. **Checks that Google accepts the key**, saves it as `google_maps_api_key` and reads it back. The key itself is never printed.
+
+Running it again is safe: it reuses the project and the key and updates the key's API restrictions.
+
+## What gets enabled
+
+| API | Used for |
+|---|---|
+| Maps JavaScript API | Maps in the websites and the Dashboard |
+| Places API (New) and Places API | Address autocomplete and place search |
+| Geocoding API | Addresses to coordinates, in the browser and in the core API |
+| Maps Static API | Static map images in the products |
+| Time Zone API | Business time zones in the Dashboard |
+| Distance Matrix API | Delivery distances in the core API |
+| Maps SDK for Android and for iOS | Maps in the mobile apps, if you reuse this key in your builds |
+
+Google has marked Places API and Distance Matrix API as legacy and may refuse to enable them on new projects. The command then warns you and continues; the features that still call them may not work until the products move to the newer APIs.
+
+## Restrictions and costs
+
+The key is restricted **by API**, not by website: the same `google_maps_api_key` is used by your websites, your apps and Ordering's servers, so a website restriction would break the apps and server-side geocoding. You can add stricter restrictions in the [Google console](https://console.cloud.google.com/google/maps-apis/credentials) if you only use the websites.
+
+Google bills Maps usage to the billing account you chose, at [Google Maps Platform prices](https://mapsplatform.google.com/pricing/). Set a [budget alert](https://console.cloud.google.com/billing/budgets) and, if you want a hard limit, [quotas per API](https://console.cloud.google.com/google/maps-apis/quotas).
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | The key is saved in your project and accepted by Google |
+| 1 | Something failed; the message says what. Nothing after that step ran |
+| 3 | Only you can continue: add a payment method, or choose a billing account with `--billing-account` |
+
+## Undo
+
+Put your previous key back in the Dashboard settings, or delete the Google Cloud project `ordering-maps-<your project>` in the [Google console](https://console.cloud.google.com/cloud-resource-manager), which also stops its billing.

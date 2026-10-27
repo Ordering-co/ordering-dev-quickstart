@@ -26,6 +26,7 @@ shellcheck ordering            # if you have it
 ./ordering doctor              # with your own .env
 node tests/client-install.test.mjs  # after preparing .clients dependencies
 bash tests/login.test.sh
+bash tests/google-maps.test.sh      # fake gcloud, no Google account needed
 ```
 
 Describe what you changed and how you tested it.

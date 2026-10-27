@@ -62,6 +62,8 @@ jobs:
         run: node --test tests/catalog.test.mjs
       - name: Login protocol tests
         run: bash tests/login.test.sh
+      - name: Google Maps key setup tests (fake gcloud)
+        run: bash tests/google-maps.test.sh
 
   clients:
     runs-on: ubuntu-latest
