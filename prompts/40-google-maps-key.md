@@ -1,5 +1,7 @@
 # Create my own Google Maps key
 
+New projects start with Ordering's Google Maps key, which only works on Ordering's own domains. Add your own so maps and address search work on your custom domains and apps.
+
 ## Already connected to Ordering
 
 Paste this into your agent if you already connected with this quickstart:

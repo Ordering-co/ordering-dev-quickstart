@@ -74,17 +74,17 @@ Try: “Use Context7 library /openapi/ordering_co_api-reference_openapi_json to 
 
 &nbsp;
 
-## 6 · Optional · Your own Google Maps key
+## 6 · Recommended · Your own Google Maps key
 
-Create the Google Maps key your products use in your own Google Cloud account, billed to you, and save it in the project you connected. You only sign in to Google in your browser; if you have no Google billing account yet, your agent guides you to add a payment method once.
+Your project starts with Ordering's Google Maps key, which only works on Ordering's own domains: maps and address search will not work on your custom domains or apps until you add your own. Your agent creates it in your own Google Cloud account, billed to you, and saves it in the project you connected. You only sign in to Google in your browser; if you have no Google billing account yet, your agent guides you to add a payment method once.
 
-After step 3, your agent offers this. Already connected? Paste this:
+After step 3, your agent recommends this. Already connected? Paste this:
 
 ```text
 I'm already connected to Ordering with ~/ordering-dev-quickstart. Set up my own Google Maps key for that same project: follow step 8 of SETUP.md and docs/google-maps.md without signing in to Ordering again. Guide me through installing gcloud if needed, the Google sign-in and, if I have none, creating a Google billing account. Show me what it will change and wait for my yes before running it with --yes. Never print the key.
 ```
 
-Or run `./ordering google-maps setup` yourself. [How it works, what it enables and costs](docs/google-maps.md)
+Or run `./ordering google-maps setup` yourself; `./ordering google-maps restore` undoes it. [How it works, what it enables and costs](docs/google-maps.md)
 
 &nbsp;
 

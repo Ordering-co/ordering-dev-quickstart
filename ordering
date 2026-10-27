@@ -24,6 +24,8 @@
 #   ./ordering google-maps setup [--gcp-project ID] [--billing-account ID] [--replace] [--yes]
 #                                Create a Google Maps key in your own Google Cloud account and
 #                                save it in your project (see docs/google-maps.md)
+#   ./ordering google-maps restore [--yes]
+#                                Put back the key that setup replaced
 #
 # Requirements: bash and curl. jq or python3 for doctor and pretty output.
 # google-maps also needs the Google Cloud CLI (gcloud).
@@ -1174,10 +1176,64 @@ maps_key_name() {
     --format='value(name)' 2>/dev/null | head -1 || true
 }
 
+# The key that setup replaced: the first one only, so repeated runs keep the original.
+MAPS_BACKUP="$ROOT/.google-maps-previous-key"
+
+# maps_confirm <yes flag> <what>: a person at a tty types the project ID, or an agent passed --yes
+maps_confirm() {
+  if [ -n "$1" ]; then
+    printf 'CONFIRMED google-maps %s on %s\n' "$2" "$ORDERING_PROJECT" >&2
+  elif [ -t 0 ] && [ -r /dev/tty ]; then
+    printf 'Type the project ID to confirm: ' >/dev/tty
+    local answer; IFS= read -r answer </dev/tty
+    [ "$answer" = "$ORDERING_PROJECT" ] || die "Not confirmed. Nothing was changed."
+  else
+    die "This changes your project: run it yourself at an interactive terminal, or pass --yes after the person approved it in the chat."
+  fi
+}
+
+# maps_save <key>: writes google_maps_api_key and reads it back; returns 1 if the write failed
+maps_save() {
+  local body; body="$(tmpfile)"
+  printf '{"value":"%s"}' "$1" > "$body"
+  audit_log PUT "/configs/$MAPS_CONFIG_ID" "@$body"
+  http -X PUT -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json" \
+    -H "Content-Type: application/json" --data-binary "@$body" "$(api_base)/configs/$MAPS_CONFIG_ID"
+  if [ "$HTTP_CODE" != 200 ] || [ "$(json_get "$HTTP_BODY" error)" != false ]; then return 1; fi
+  maps_config
+  if [ "$MAPS_CONFIG_VALUE" = "$1" ]; then
+    ok "Saved as google_maps_api_key in $ORDERING_PROJECT (read back)"
+  elif [ "$MAPS_CONFIG_VALUE" = PROTECT ]; then
+    warn "Saved, but the project hides this setting, so it could not be read back."
+  else
+    die "The project returned a different google_maps_api_key after saving."
+  fi
+}
+
+cmd_google_maps_restore() {
+  [ "${1:-}" = "" ] || [ "$1" = --yes ] || die "Usage: ./ordering google-maps restore [--yes]"
+  require_project
+  [ -n "${ORDERING_API_KEY:-}" ] || die "The REST API credential is missing. Run ./ordering reset and keep the REST API box checked when you sign in."
+  [ -s "$MAPS_BACKUP" ] || die "There is no previous key to restore in this folder."
+  local previous; previous="$(head -1 "$MAPS_BACKUP")"
+  maps_config
+  [ -n "$MAPS_CONFIG_ID" ] || die "This project has no google_maps_api_key setting. Contact Ordering.co support."
+  if [ "$MAPS_CONFIG_VALUE" = "$previous" ]; then ok "The project already uses the previous key $(mask "$previous")"; return; fi
+  title "This will"
+  echo "  • replace google_maps_api_key $(mask "$MAPS_CONFIG_VALUE") with the previous key $(mask "$previous") in $ORDERING_PROJECT (production)"
+  maps_confirm "${1:-}" restore
+  maps_save "$previous" || die "Ordering did not save the key (HTTP $HTTP_CODE). Run this command again."
+  hint "Your own key still exists in Google Cloud; delete its project there if you no longer need it."
+}
+
 cmd_google_maps() {
-  local usage_line="Usage: ./ordering google-maps setup [--gcp-project ID] [--billing-account ID] [--replace] [--yes]"
-  [ "${1:-}" = setup ] || die "$usage_line"
-  shift
+  local usage_line="Usage: ./ordering google-maps setup [--gcp-project ID] [--billing-account ID] [--replace] [--yes]
+       ./ordering google-maps restore [--yes]"
+  case "${1:-}" in
+    setup) shift ;;
+    restore) shift; cmd_google_maps_restore "$@"; return ;;
+    *) die "$usage_line" ;;
+  esac
   local gcp="" billing="" replace="" yes=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1265,15 +1321,8 @@ cmd_google_maps() {
   fi
   if [ -n "$MAPS_CONFIG_VALUE" ] && [ -z "$replace" ]; then
     die "The project already has a Google Maps key. Run the same command with --replace to switch it to your own key."
-  elif [ -n "$yes" ]; then
-    printf 'CONFIRMED google-maps setup on %s\n' "$ORDERING_PROJECT" >&2
-  elif [ -t 0 ] && [ -r /dev/tty ]; then
-    printf 'Type the project ID to confirm: ' >/dev/tty
-    local answer; IFS= read -r answer </dev/tty
-    [ "$answer" = "$ORDERING_PROJECT" ] || die "Not confirmed. Nothing was changed."
-  else
-    die "This changes your Google Cloud account and your project: run it yourself at an interactive terminal, or pass --yes after the person approved it in the chat."
   fi
+  maps_confirm "$yes" setup
 
   title "Setting up"
   if [ -z "$exists" ]; then
@@ -1325,22 +1374,11 @@ cmd_google_maps() {
   if [ "$MAPS_CONFIG_VALUE" = "$key" ]; then
     ok "The project already uses this key"
   else
-    local body; body="$(tmpfile)"
-    printf '{"value":"%s"}' "$key" > "$body"
-    audit_log PUT "/configs/$MAPS_CONFIG_ID" "@$body"
-    http -X PUT -H "@$(header_file "X-Api-Key: $ORDERING_API_KEY")" -H "Accept: application/json" \
-      -H "Content-Type: application/json" --data-binary "@$body" "$(api_base)/configs/$MAPS_CONFIG_ID"
-    if [ "$HTTP_CODE" != 200 ] || [ "$(json_get "$HTTP_BODY" error)" != false ]; then
-      die "Ordering did not save the key (HTTP $HTTP_CODE). The key is ready in Google Cloud: run this command again."
+    if [ -n "$MAPS_CONFIG_VALUE" ] && [ "$MAPS_CONFIG_VALUE" != PROTECT ] && [ ! -s "$MAPS_BACKUP" ]; then
+      printf '%s\n' "$MAPS_CONFIG_VALUE" > "$MAPS_BACKUP"
+      ok "Kept the previous key $(mask "$MAPS_CONFIG_VALUE") in .google-maps-previous-key (./ordering google-maps restore puts it back)"
     fi
-    maps_config
-    if [ "$MAPS_CONFIG_VALUE" = "$key" ]; then
-      ok "Saved as google_maps_api_key in $ORDERING_PROJECT (read back)"
-    elif [ "$MAPS_CONFIG_VALUE" = PROTECT ]; then
-      warn "Saved, but the project hides this setting, so it could not be read back."
-    else
-      die "The project returned a different google_maps_api_key after saving."
-    fi
+    maps_save "$key" || die "Ordering did not save the key (HTTP $HTTP_CODE). The key is ready in Google Cloud: run this command again."
   fi
   hint "Manage the key and its usage: https://console.cloud.google.com/google/maps-apis/credentials?project=$gcp"
 }
@@ -1348,7 +1386,7 @@ cmd_google_maps() {
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }

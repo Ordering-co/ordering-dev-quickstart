@@ -33,13 +33,13 @@ Then ask only **which products to run locally**, recommending Website Marketplac
 
 The `repos` commands are standalone and non-interactive: use `--all` explicitly. Preserve existing product files, branches, remotes and SDK revisions; do not fetch, pull, reset, switch branches or repair an unidentified checkout automatically. Do not modify business data to prove onboarding. Keep all licence notices. The Quickstart's own safe update procedure in SETUP.md does not authorize updating the product checkouts.
 
-## Optional Google Maps key
+## Recommended: their own Google Maps key
 
-After the connection is verified, offer it once and guide it with [SETUP.md step 8](SETUP.md#8-optional-their-own-google-maps-key); a developer who is already connected starts there directly, reusing the connected project with no new Ordering sign-in. Details in [docs/google-maps.md](docs/google-maps.md). It changes their Google Cloud account (project, billing link, APIs, key) and the production setting `google_maps_api_key`.
+New projects use Ordering's Google Maps key, which is restricted to Ordering's domains and does not work on their custom domains or apps. After the connection is verified, recommend their own key and guide it with [SETUP.md step 8](SETUP.md#8-recommended-their-own-google-maps-key); a developer who is already connected starts there directly, reusing the connected project with no new Ordering sign-in. Details in [docs/google-maps.md](docs/google-maps.md). It changes their Google Cloud account (project, billing link, APIs, key) and the production setting `google_maps_api_key`.
 
 - Run `./ordering google-maps setup` without `--yes` first: it reads, signs in to Google in the browser and prints what it will change, then stops. Relay any Google sign-in link. Pass `--yes` only after the developer approves that summary in the chat, and `--replace` only when they agree to replace the key the project already has.
 - Exit 3 means only the person can continue: relay the billing link, or ask which billing account to use for `--billing-account`. Never pick one for them, and never try to add a payment method.
-- Never print, read back or copy the key (`gcloud services api-keys get-key-string`, the `configs` result). Report "saved and read back" only when the command says so; a warning about legacy APIs is a partial result to report.
+- Never print, read back or copy either key (`gcloud services api-keys get-key-string`, the `configs` result, `.google-maps-previous-key`). `./ordering google-maps restore` puts back the replaced key, with the same confirmation rule. Report "saved and read back" only when the command says so; a warning about legacy APIs is a partial result to report.
 
 ## Using the Ordering.co MCP
 

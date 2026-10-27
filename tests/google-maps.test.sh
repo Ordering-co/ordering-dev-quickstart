@@ -48,6 +48,7 @@ export PATH="$WORK/bin:$PATH" FAKE_GCLOUD_STATE="$STATE" ORDERING_API_HOST="$BAS
 unset ORDERING_MCP_KEY
 
 pass=0; failn=0
+perms() { python3 -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$1"; }
 check() { if eval "$2"; then echo "ok   - $1"; pass=$((pass+1)); else echo "FAIL - $1"; failn=$((failn+1)); fi; }
 
 fresh() {  # a clean copy of the repo and a fresh Google account with one billing account
@@ -100,6 +101,21 @@ check "an existing key needs --replace, shown in the summary" '[ "$rc" = 1 ] && 
 : > "$STATE/calls"; setup --yes --replace
 check "with --replace it reuses the project and the key" '[ "$rc" = 0 ] && ! grep -qE "projects create|billing projects link|api-keys create" "$STATE/calls" && grep -q "api-keys update" "$STATE/calls"'
 check "it reports the key is already in use" 'grep -q "already uses this key" "$WORK/out"'
+
+echo "# backup and restore of the replaced key"
+OLD="AIza$(openssl rand -hex 18 | cut -c1-35)"
+fresh; curl -s -o /dev/null -X POST "$BASE/__test/maps-config" -H "Content-Type: application/json" -d "{\"value\":\"$OLD\"}"
+setup --yes --replace
+check "setup replaces an existing key with --replace" '[ "$rc" = 0 ] && [ "$(saved)" = "$KEY" ]'
+check "the replaced key is kept in a private file" '[ "$(cat "$WORK/repo/.google-maps-previous-key")" = "$OLD" ] && [ "$(perms "$WORK/repo/.google-maps-previous-key")" = 600 ]'
+check "neither key is printed" '! grep -qE "$KEY|$OLD" "$WORK/out"'
+check "the backup file is gitignored" '(cd "$REPO" && git check-ignore -q .google-maps-previous-key)'
+setup --yes --replace
+check "a second run keeps the original backup" '[ "$(cat "$WORK/repo/.google-maps-previous-key")" = "$OLD" ]'
+rc=0; "$WORK/repo/ordering" google-maps restore < /dev/null > "$WORK/out" 2>&1 || rc=$?
+check "restore without --yes and without a tty changes nothing" '[ "$rc" = 1 ] && [ "$(saved)" = "$KEY" ]'
+rc=0; "$WORK/repo/ordering" google-maps restore --yes < /dev/null > "$WORK/out" 2>&1 || rc=$?
+check "restore --yes puts the previous key back" '[ "$rc" = 0 ] && [ "$(saved)" = "$OLD" ] && grep -q "read back" "$WORK/out" && ! grep -qE "$KEY|$OLD" "$WORK/out"'
 
 echo "# Google refuses the legacy APIs"
 fresh; touch "$STATE/refuse_legacy"; setup --yes

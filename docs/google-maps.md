@@ -2,11 +2,13 @@
 
 Maps, address autocomplete, delivery zones and distances in the Ordering products use the project setting `google_maps_api_key`. `./ordering google-maps setup` creates that key in **your own** Google Cloud account and saves it in the project you connected with this quickstart, so Google bills Maps usage to you and you see it in your Google console.
 
+**Set it up before you go live.** New projects come with Ordering's key, which is restricted to Ordering's own domains: it does not work on your custom domains, your apps or anywhere else.
+
 You sign in to Google in your browser, and if you have no Google billing account yet you add a payment method once. Google does not let any tool do that part for you. Everything else is automatic.
 
 ## Two ways to start
 
-- **New to the quickstart:** paste [the setup prompt](../prompts/00-setup.md). After your Ordering connection is verified, your agent offers this step ([SETUP.md step 8](../SETUP.md#8-optional-their-own-google-maps-key)).
+- **New to the quickstart:** paste [the setup prompt](../prompts/00-setup.md). After your Ordering connection is verified, your agent offers this step ([SETUP.md step 8](../SETUP.md#8-recommended-their-own-google-maps-key)).
 - **Already connected:** paste [the Google Maps prompt](../prompts/40-google-maps-key.md), or follow the steps below yourself. It uses the project and REST credential you already have; no new Ordering sign-in.
 
 ## Step by step
@@ -36,8 +38,10 @@ Without Homebrew, use [the official installer](https://cloud.google.com/sdk/docs
 
 What you will see, in this order:
 
-1. **`Current google_maps_api_key: …abcd`** or **`No google_maps_api_key yet`**. New Ordering projects usually come with a key already; you will replace it with yours in step 4.
-2. **Google sign-in.** A browser window opens on the computer running the terminal. Sign in with the Google account that should **own and pay for** the key. Then check the line **`Signed in as …`**. If it shows another account, run `gcloud auth login`, choose the right one and run the command again.
+1. **`Current google_maps_api_key: …abcd`** or **`No google_maps_api_key yet`**. New projects show Ordering's key here; you replace it with yours in step 4.
+2. **Google sign-in.** A browser window opens on the computer running the terminal. Sign in with the Google account that should **own and pay for** the key. Google then asks you to allow **Google Cloud SDK** to see, edit and manage your Google Cloud data, among other Google Cloud permissions: that is Google's official command-line tool, and this command only uses it to create the project, link billing, enable the APIs and create the key. Then check the line **`Signed in as …`**. If it shows another account, run `gcloud auth login`, choose the right one and run the command again.
+
+   With a company Google account (Google Workspace), the project is created inside your company's Google Cloud organization and follows its policies.
 3. **Billing.** One of three outcomes:
    - **No billing account (exit 3):** open the [link it prints](https://console.cloud.google.com/billing/create), create a billing account with your country and a payment card, and give it a name you will recognize. Then run the command again.
    - **Several billing accounts (exit 3):** it lists them as `ID  Name`. Run it again with `--billing-account <ID>` for the one you want.
@@ -63,12 +67,15 @@ Setting up
   ✔ Enabled the Google Maps APIs
   ✔ Created the API key "Ordering Maps"
   ✔ Google accepts the key …wxyz
+  ✔ Kept the previous key …abcd in .google-maps-previous-key (./ordering google-maps restore puts it back)
   ✔ Saved as google_maps_api_key in <your project> (read back)
 ```
 
-The key itself is never printed. Open your website and type an address to see the autocomplete working with your key. Manage the key and its usage at the link the command prints.
+The keys themselves are never printed. Open your website on your own domain and type an address to see the autocomplete working with your key. Manage the key and its usage at the link the command prints.
 
-Running the command again is safe: it reuses the project and the key, updates the key's API restrictions and reports `The project already uses this key`.
+If you will not use `gcloud` again on this computer, sign out of Google there: `gcloud auth revoke`.
+
+Running the command again is safe: it reuses the project and the key and updates the key's API restrictions. Its summary still says `replace google_maps_api_key …wxyz` and asks for `--replace`, because it only learns that the key is the same at the end, where it reports `The project already uses this key`.
 
 ### 6. Mobile apps (only if you build your own)
 
@@ -129,4 +136,8 @@ Google bills Maps usage to the billing account you chose, at [Google Maps Platfo
 
 ## Undo
 
-Delete the Google Cloud project `ordering-maps-<your project>` in the [Google console](https://console.cloud.google.com/cloud-resource-manager), which also stops its billing, and set another key in your Dashboard settings. The command does not keep a copy of the key it replaced.
+```bash
+./ordering google-maps restore
+```
+
+It puts back the key that setup replaced, kept in `.google-maps-previous-key` in this folder (private, never committed; only the first replaced key is kept), after the same confirmation. Your own key keeps existing in Google Cloud: to stop it and its billing, delete the project `ordering-maps-<your project>` in the [Google console](https://console.cloud.google.com/cloud-resource-manager). Remember that Ordering's key does not work on your own domains.
