@@ -1212,9 +1212,6 @@ cmd_google_maps() {
   title "Ordering project $ORDERING_PROJECT"
   maps_config
   [ -n "$MAPS_CONFIG_ID" ] || die "This project has no google_maps_api_key setting. Contact Ordering.co support."
-  if [ -n "$MAPS_CONFIG_VALUE" ] && [ -z "$replace" ]; then
-    die "The project already has a Google Maps key ($(mask "$MAPS_CONFIG_VALUE")). Pass --replace to switch it to a key in your own Google Cloud account."
-  fi
   if [ -n "$MAPS_CONFIG_VALUE" ]; then ok "Current google_maps_api_key: $(mask "$MAPS_CONFIG_VALUE")"; else ok "No google_maps_api_key yet"; fi
 
   title "Google account"
@@ -1261,8 +1258,14 @@ cmd_google_maps() {
   if [ -n "$billing_on" ]; then echo "  • keep its billing account"; else echo "  • link it to the billing account $billing (Google bills Maps usage there)"; fi
   echo "  • enable the Google Maps APIs the Ordering products use"
   echo "  • create or update the API key \"$MAPS_KEY_NAME\", limited to those APIs"
-  echo "  • save it as google_maps_api_key in the Ordering project $ORDERING_PROJECT (production)"
-  if [ -n "$yes" ]; then
+  if [ -n "$MAPS_CONFIG_VALUE" ]; then
+    echo "  • replace google_maps_api_key $(mask "$MAPS_CONFIG_VALUE") in the Ordering project $ORDERING_PROJECT (production)"
+  else
+    echo "  • save it as google_maps_api_key in the Ordering project $ORDERING_PROJECT (production)"
+  fi
+  if [ -n "$MAPS_CONFIG_VALUE" ] && [ -z "$replace" ]; then
+    die "The project already has a Google Maps key. Run the same command with --replace to switch it to your own key."
+  elif [ -n "$yes" ]; then
     printf 'CONFIRMED google-maps setup on %s\n' "$ORDERING_PROJECT" >&2
   elif [ -t 0 ] && [ -r /dev/tty ]; then
     printf 'Type the project ID to confirm: ' >/dev/tty

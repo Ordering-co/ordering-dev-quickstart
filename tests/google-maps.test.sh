@@ -96,7 +96,7 @@ check "the audit log records the write without the key" 'grep -q "PUT /configs/4
 
 echo "# run again"
 setup --yes
-check "an existing key needs --replace" '[ "$rc" = 1 ] && grep -q -- "--replace" "$WORK/out"'
+check "an existing key needs --replace, shown in the summary" '[ "$rc" = 1 ] && grep -q "replace google_maps_api_key" "$WORK/out" && grep -q -- "--replace" "$WORK/out"'
 : > "$STATE/calls"; setup --yes --replace
 check "with --replace it reuses the project and the key" '[ "$rc" = 0 ] && ! grep -qE "projects create|billing projects link|api-keys create" "$STATE/calls" && grep -q "api-keys update" "$STATE/calls"'
 check "it reports the key is already in use" 'grep -q "already uses this key" "$WORK/out"'
