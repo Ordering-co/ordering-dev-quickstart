@@ -29,7 +29,7 @@ Once authentication, launcher and client registration checks are verified, offer
 
 If accepted, follow [docs/products.md](docs/products.md): clone the seven into the agreed directory, confirm the project and **configure all seven by default** through their public helpers. Ask once for a deliberately selected franchise when needed for the two franchise surfaces; do not pick the first item or ask which product to configure. Product configuration accepts an explicitly confirmed public project even without Ordering login and never reads/copies `.env` or agent credentials.
 
-Then ask only **which products to run locally**, recommending Website Marketplace + Dashboard together. Install dependencies and launch only those selected, following each runbook. Cloned, configured and running are distinct results. Missing franchise data, collisions or a failed helper require an honest partial report and recovery, not a success claim for all seven.
+Then ask only **which products to run locally**, recommending Ordering Website + Dashboard together. Install dependencies and launch only those selected, following each runbook. Cloned, configured and running are distinct results. Missing franchise data, collisions or a failed helper require an honest partial report and recovery, not a success claim for all seven.
 
 The `repos` commands are standalone and non-interactive: use `--all` explicitly. Preserve existing product files, branches, remotes and SDK revisions; do not fetch, pull, reset, switch branches or repair an unidentified checkout automatically. Do not modify business data to prove onboarding. Keep all licence notices. The Quickstart's own safe update procedure in SETUP.md does not authorize updating the product checkouts.
 
