@@ -53,7 +53,9 @@ One Quickstart checkout supports multiple Ordering projects. Add each connection
 
 For the web selector, use Node.js 22+ and open [http://127.0.0.1:4317/](http://127.0.0.1:4317/) while the command is running. Add `--port PORT` if you need a different port. To switch from the terminal, run `./ordering projects use` or pass the project ID directly.
 
-After switching, run `./ordering doctor`, reload any MCP client using this checkout's launcher, and ask “Who am I in Ordering?” before running project operations. See [multiple local projects](docs/credentials.md#multiple-local-projects).
+To switch inside an open Codex chat, start it with `./ordering codex --live` and allow this checkout's configuration if Codex asks. Keep one idle Codex chat open in the checkout. The browser verifies the new project in that chat before confirming the switch.
+
+Other MCP clients pick up the project when they launch a new connection. See [multiple local projects](docs/credentials.md#multiple-local-projects).
 
 ## 4 · Optional · Get all seven Ordering products
 

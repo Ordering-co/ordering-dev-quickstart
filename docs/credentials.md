@@ -29,9 +29,14 @@ Each Quickstart checkout has its own project selector. The existing connection i
 | `./ordering projects add PROJECT` | Signs in to the requested project and saves its own credentials. The current selection stays in effect. |
 | `./ordering projects add PROJECT start` and `./ordering projects add PROJECT wait` | Run the same sign-in in two steps for an agent or a separate terminal. Use `code` to redisplay the pending code. |
 | `./ordering projects use [PROJECT]` | Selects a saved project by ID or prompts for one in an interactive terminal. Use `--legacy` to return to the top-level `.env`. |
+| `./ordering codex --live` | Opts this checkout into switching a running Codex chat from the web selector. Requires Node.js 22+ and Codex with the local App Server. |
 | `./ordering projects import QUICKSTART_DIRECTORY` | Verifies the saved MCP and any REST key in another checkout's top-level `.env` and saves a local profile. The source and current selection stay in place. |
 
-The selection applies to new Quickstart commands, including `api`, `doctor`, Google Maps commands and the MCP launcher. Running MCP processes keep the project they started with. Reload clients using that launcher and run `whoami` before accessing data. A client configured directly with an MCP URL keeps its own project. The selector also leaves product checkouts, SDK settings and standalone HTTP request examples as configured.
+The selection applies to new Quickstart commands, including `api`, `doctor`, Google Maps commands and the MCP launcher. A client configured directly with an MCP URL follows its own URL. The selector applies within this Quickstart checkout.
+
+For live switching in Codex, use `./ordering codex --live` to start the chat and `./ordering projects web` in another terminal for the browser. Follow any checkout trust prompt in Codex. Quickstart writes a project-local `.codex/config.toml` at first setup. It pins the project on the `ordering_quickstart` launcher and disables the generic `ordering` entry within this checkout. Existing checkout configuration requires a review before setup.
+
+The browser confirms a live switch after `whoami` reports the new project in the same idle Codex chat. If a turn is running or several chats are open in the checkout, the browser asks you to finish the turn or leave a single chat available. Use the browser for live switching. Terminal selection and other supported clients pick up the project when opening a new connection.
 
 The web selector ships the [released Ordering.co Guidelines](https://brand.ordering.co/product/) tokens, logo masters and fonts in a local bundle. It loads assets offline. Use `node scripts/projects-web/brand.mjs --check` to verify the lock, `--freshness` to compare the published release, and `--sync` to restore the pinned assets from the release origin.
 

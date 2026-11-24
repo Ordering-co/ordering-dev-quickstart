@@ -1,9 +1,11 @@
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { readBrand } from './brand.mjs';
+import { CodexSwitchError, switchCodexProject } from '../codex-projects.mjs';
 
 if (Number(process.versions.node.split('.')[0]) < 22) {
   console.error('Node.js 22+ is required for ordering projects web.');
@@ -17,6 +19,7 @@ if (args.length && (args.length !== 2 || args[0] !== '--port' || !/^\d{1,5}$/.te
   process.exit(1);
 }
 
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const ordering = fileURLToPath(new URL('../../ordering', import.meta.url));
 const run = promisify(execFile);
 const command = (...argv) => run(ordering, ['projects', ...argv], { encoding: 'utf8', timeout: 5000 });
@@ -34,7 +37,9 @@ async function projects() {
   });
 }
 
-function page(saved, { error, selected } = {}) {
+let lastCodexSwitch;
+
+function page(saved, { error, selected, verifiedCodex } = {}) {
   const active = saved.find(project => project.active);
   const rows = [...saved].sort((a, b) => Number(b.active) - Number(a.active)).map(({ id, active }) => `
     <li class="project${active ? ' project-active' : ''}">
@@ -68,7 +73,7 @@ function page(saved, { error, selected } = {}) {
     <h1>Local projects</h1>
     <p class="intro">Choose the project Quickstart uses for new commands and MCP sessions.</p>
     ${error ? `<p class="error" role="alert">${error}</p>` : ''}
-    ${active && active.id === selected ? `<p class="feedback" role="status" tabindex="-1" autofocus>Switched to <strong>${active.id}</strong>. New MCP sessions will use this project.</p>` : ''}
+    ${active && active.id === selected ? `<p class="feedback" role="status" tabindex="-1" autofocus>Switched to <strong>${active.id}</strong>. ${verifiedCodex ? 'Verified in the open Codex chat.' : 'New MCP sessions will use this project.'}</p>` : ''}
     <div class="workspace">
       <section class="projects-panel" aria-labelledby="saved-projects">
         <div class="panel-header">
@@ -90,7 +95,7 @@ function page(saved, { error, selected } = {}) {
         </section>
         ${saved.length ? `<section class="mcp-help" aria-labelledby="mcp">
           <h2 id="mcp">MCP sessions</h2>
-          <p>Your selection applies to new Quickstart MCP connections. Open connections keep their current project.</p>
+          <p>Run <code>./ordering codex --live</code> once to open a Codex chat that can switch here. Other clients use the selection for new connections.</p>
         </section>` : ''}
       </aside>
     </div>
@@ -119,8 +124,10 @@ const server = createServer(async (request, response) => {
   }
   try {
     if (request.method === 'GET' && (request.url === '/' || request.url.startsWith('/?'))) {
-      const selected = new URLSearchParams(request.url.slice(2)).get('selected');
-      return show(response, 200, await projects(), { selected });
+      const query = new URLSearchParams(request.url.slice(2));
+      const selected = query.get('selected');
+      const verifiedCodex = Boolean(lastCodexSwitch) && lastCodexSwitch.project === selected && lastCodexSwitch.receipt === query.get('codex');
+      return show(response, 200, await projects(), { selected, verifiedCodex });
     }
     if (request.method === 'GET' && request.url === '/actions.js') return send(response, 200, actions, 'text/javascript; charset=utf-8');
     if (request.method === 'GET' && request.url === '/style.css') return send(response, 200, css, 'text/css; charset=utf-8');
@@ -142,8 +149,17 @@ const server = createServer(async (request, response) => {
     if (ids.length !== 1 || !saved.some(project => project.id === ids[0])) {
       return show(response, 400, saved, { error: 'That project is unavailable. Choose a saved project below.' });
     }
-    await command('use', ids[0]);
-    response.writeHead(303, { Location: '/?selected=' + encodeURIComponent(ids[0]) }).end();
+    const project = ids[0];
+    try {
+      const result = await switchCodexProject(root, project, () => command('use', project));
+      lastCodexSwitch = result === 'verified' ? { project, receipt: randomUUID() } : undefined;
+      const query = new URLSearchParams({ selected: project });
+      if (lastCodexSwitch) query.set('codex', lastCodexSwitch.receipt);
+      response.writeHead(303, { Location: '/?' + query }).end();
+    } catch (error) {
+      if (error instanceof CodexSwitchError) return show(response, 409, await projects(), { error: error.message });
+      throw error;
+    }
   } catch {
     show(response, 500, [], { error: 'Quickstart could not complete that request. Reload the page to try again.' });
   }
@@ -155,6 +171,10 @@ server.on('error', error => {
     : 'Quickstart could not start the local project selector.');
   process.exitCode = 1;
 });
+// Let an in-progress switch finish or restore the previous configuration.
+const stop = () => server.close();
+process.once('SIGINT', stop);
+process.once('SIGTERM', stop);
 server.listen(port, '127.0.0.1', () => {
   console.log(`Ordering project selector: http://127.0.0.1:${server.address().port}/`);
 });

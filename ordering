@@ -18,6 +18,7 @@
 #   ./ordering reset             logout, then sign in again (same flags as login)
 #   ./ordering claude [args]     Start Claude Code with your .env loaded
 #   ./ordering codex [args]      Start Codex with the Ordering MCP configured
+#   ./ordering codex --live      Start a Codex chat for browser project switching
 #   ./ordering cursor | code     Open this folder in Cursor or VS Code with your .env loaded
 #   ./ordering api [--yes] METHOD PATH [JSON | @file.json]
 #                                Call the REST API (non-GET requests ask for confirmation,
@@ -367,6 +368,15 @@ cmd_codex() {
   require_project
   cd "$ROOT"
   unset ORDERING_API_KEY
+  if [ "${1:-}" = --live ]; then
+    shift
+    [ -n "${ORDERING_MCP_KEY:-}" ] || die "No MCP key. Run ./ordering login."
+    unset ORDERING_MCP_KEY ORDERING_TEST_EMAIL ORDERING_TEST_PASSWORD NODE_OPTIONS NODE_PATH
+    client_runtime
+    codex app-server daemon start >/dev/null
+    node "$ROOT/scripts/codex-projects.mjs" "$ROOT" "$ORDERING_PROJECT"
+    exec codex --remote unix:// -C "$ROOT" "$@"
+  fi
   exec codex \
     -c "mcp_servers.ordering.url=\"$(mcp_url)\"" \
     -c 'mcp_servers.ordering.bearer_token_env_var="ORDERING_MCP_KEY"' \
@@ -1581,7 +1591,7 @@ cmd_projects() {
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
@@ -1591,12 +1601,24 @@ if [ "$cmd" = projects ]; then
   cmd_projects "$@"
   exit
 fi
-active="$(active_project)"
-if [ -n "$active" ]; then
-  profile_context "$active"
-  [ -f "$ENV_FILE" ] || die "The selected project is missing. Run ./ordering projects use to select another one."
+if [ "$cmd" = mcp ] && [ "$#" -gt 0 ]; then
+  [ "$#" -eq 2 ] && [ "$1" = --project ] && valid_project "$2" ||
+    die "Usage: ./ordering mcp [--project PROJECT]"
+  if [ "$2" = "$(saved_project "$ROOT/.env" || true)" ]; then
+    clear_project_env
+    load_env
+  else
+    profile_context "$2"
+    [ -f "$ENV_FILE" ] || die "The requested project is not saved in this checkout."
+  fi
 else
-  load_env
+  active="$(active_project)"
+  if [ -n "$active" ]; then
+    profile_context "$active"
+    [ -f "$ENV_FILE" ] || die "The selected project is missing. Run ./ordering projects use to select another one."
+  else
+    load_env
+  fi
 fi
 case "$cmd" in
   login)         cmd_login "$@" ;;
