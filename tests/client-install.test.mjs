@@ -23,7 +23,7 @@ for (const [name, agent] of Object.entries(agents)) {
   agent.configPath = ${JSON.stringify(work)} + '/' + name + '.config';
   agent.resolveConfigPath = () => agent.configPath;
 }
-process.argv = ['node', 'client-installer', ${JSON.stringify(work)}, process.argv[2], process.env.ORDERING_TEST_PROJECT];
+process.argv = ['node', 'client-installer', ${JSON.stringify(work)}, process.argv[2], process.env.ORDERING_TEST_PROJECT, process.argv[3]];
 await import(pathToFileURL(${JSON.stringify(join(repo, 'scripts/client-installer.mjs'))}));
 `);
   for (const name of names) {
@@ -60,7 +60,7 @@ elif [ "$2" = experimental.mcp.remove ]; then
   rm -f "${join(work, 'native-active')}"
 fi
 `, { mode: 0o700 });
-  const run = (action, version = '1', failActivation = '', testClients = '', testProject = 'test-project') => spawnSync(process.execPath, [bootstrap, action], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation, ORDERING_TEST_CLIENTS: testClients, ORDERING_TEST_PROJECT: testProject } });
+  const run = (action, version = '1', failActivation = '', testClients = '', testProject = 'test-project', scope = '') => spawnSync(process.execPath, [bootstrap, action, scope], { encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, ORDERING_TEST_OPENCODE_VERSION: version, ORDERING_TEST_ACTIVATION_FAIL: failActivation, ORDERING_TEST_CLIENTS: testClients, ORDERING_TEST_PROJECT: testProject } });
   writeFileSync(join(work, 'credential-generation'), 'initial');
   let result = run('install');
   assert.equal(result.status, 0, result.stderr);
@@ -104,6 +104,13 @@ fi
   assert.equal(run('install').status, 0, 'idempotent second install');
   assert.deepEqual(names.map(name => readFileSync(join(work, name + '.config'), 'utf8')), beforeRepeat, 'repeat install preserves exact existing entries');
   assert.equal(run('status').status, 0, 'read-back verification');
+  assert.equal(run('install', '1', '', '', 'test-project', '--global').status, 0, 'owned registrations can switch to the shared store');
+  assert.equal(run('status', '1', '', '', 'test-project', '--global').status, 0, 'shared registrations read back');
+  for (const name of names) {
+    const text = readFileSync(join(work, name + '.config'), 'utf8');
+    assert.ok(text.includes('--global') && text.includes('other-command'), name + ': shared launcher and unrelated settings');
+  }
+  assert.equal(run('install').status, 0, 'owned registrations can return to the checkout store');
   const cursorPath = join(work, 'cursor.config');
   const cursorConfig = JSON.parse(readFileSync(cursorPath, 'utf8'));
   cursorConfig.mcpServers.ordering = { type: 'http', url: 'https://api.ordering.co/mcp/another-project', headers: { Authorization: 'Bearer ${ORDERING_MCP_KEY}' } };

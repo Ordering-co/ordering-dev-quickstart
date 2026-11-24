@@ -8,18 +8,19 @@ import { promisify } from 'node:util';
 
 const serverName = 'ordering_quickstart';
 const configHeader = '# Managed by Ordering.co Quickstart for this checkout.\n';
+const disabledOrdering = '[mcp_servers.ordering]\nenabled = false\n\n';
 const projectId = /^[a-z0-9_-]+$/;
 
 export class CodexSwitchError extends Error {}
 
-function launcher(root, project) {
+function launcher(root, project, { quickstart = root, global = false } = {}) {
   if (!projectId.test(project)) throw new CodexSwitchError('Choose a saved project.');
-  return [join(root, 'ordering'), 'mcp', '--project', project];
+  return [join(quickstart, 'ordering'), ...(global ? ['--global'] : []), 'mcp', '--project', project];
 }
 
-function configText(root, project, hideDefault) {
-  const defaults = hideDefault ? '[mcp_servers.ordering]\nenabled = false\n\n' : '';
-  return configHeader + defaults + `[mcp_servers.${serverName}]\ncommand = "/bin/bash"\nargs = ${JSON.stringify(launcher(root, project))}\n`;
+function configText(root, project, hideDefault, context) {
+  const defaults = hideDefault ? disabledOrdering : '';
+  return configHeader + defaults + `[mcp_servers.${serverName}]\ncommand = "/bin/bash"\nargs = ${JSON.stringify(launcher(root, project, context))}\n`;
 }
 
 async function regularPath(path, isExpectedType) {
@@ -40,13 +41,13 @@ async function readConfig(root) {
   return readFile(path, 'utf8');
 }
 
-function ownedConfig(root, source) {
+function ownedConfig(root, source, context) {
   if (!source?.startsWith(configHeader)) return null;
   try {
     const args = JSON.parse(source.match(/^args = (.*)$/m)?.[1] ?? '');
     const project = args.at(-1);
     for (const hideDefault of [true, false]) {
-      if (source === configText(root, project, hideDefault)) return { project, hideDefault };
+      if (source === configText(root, project, hideDefault, context)) return { project, hideDefault };
     }
   } catch {
     // An edited configuration is no longer managed.
@@ -70,16 +71,21 @@ async function writeConfig(root, before, after) {
   }
 }
 
-export async function configureCodex(root, project, hideDefault = true) {
+export async function configureCodex(root, project, hideDefault = true, context) {
   const before = await readConfig(root);
-  if (before !== null && !ownedConfig(root, before)) {
+  const current = ownedConfig(root, before, context);
+  if (before !== null && !current) {
     throw new CodexSwitchError('This checkout already has a Codex configuration. Quickstart left it intact.');
   }
-  const after = configText(root, project, hideDefault);
-  if (before === null) await writeConfig(root, before, after);
-  else if (ownedConfig(root, before).project !== project) {
-    await switchCodexProject(root, project, async () => {});
+  const after = configText(root, project, hideDefault, context);
+  if (before === null || (context?.conversation && before !== after)) await writeConfig(root, before, after);
+  else if (current.project !== project) {
+    await switchCodexProject(root, project, async () => {}, undefined, context);
   }
+}
+
+export async function managedProject(root, context) {
+  return ownedConfig(root, await readConfig(root), context)?.project;
 }
 
 function withinCheckout(root, cwd) {
@@ -88,14 +94,14 @@ function withinCheckout(root, cwd) {
   return part !== '..' && !part.startsWith('..' + sep) && !isAbsolute(part);
 }
 
-async function checkoutThread(root, rpc) {
+async function checkoutThread(root, rpc, exact) {
   const local = [];
   let cursor = null;
   do {
     const page = await rpc('thread/loaded/list', { cursor, limit: 50 });
     for (const threadId of page.data) {
       const { thread } = await rpc('thread/read', { threadId });
-      if (withinCheckout(root, thread.cwd)) local.push({ threadId, thread });
+      if (exact ? thread.cwd === root : withinCheckout(root, thread.cwd)) local.push({ threadId, thread });
     }
     cursor = page.nextCursor;
   } while (cursor);
@@ -103,6 +109,16 @@ async function checkoutThread(root, rpc) {
     throw new CodexSwitchError('More than one Codex chat is open in this checkout. Close the extra chats before switching.');
   }
   return local[0];
+}
+
+export async function assertConversationAvailable(root, quickstart) {
+  return withCodex(quickstart, async rpc => {
+    if (await checkoutThread(root, rpc, true)) {
+      throw new CodexSwitchError('A Codex chat is already open in this directory. Use a different directory for the new conversation.');
+    }
+    const { config } = await rpc('config/read', { cwd: root });
+    return Boolean(config?.mcp_servers?.ordering);
+  });
 }
 
 function idle(thread) {
@@ -116,15 +132,17 @@ async function verifyProject(rpc, threadId, project) {
   }
 }
 
-export async function switchCodexProject(root, target, select, connect = action => withCodex(root, action)) {
+export async function switchCodexProject(root, target, select, connect, context = {}) {
+  connect ??= action => withCodex(context.quickstart ?? root, action);
   const initial = await readConfig(root);
   if (!initial?.startsWith(configHeader)) {
+    if (context.conversation) throw new CodexSwitchError('The configuration for this conversation is unavailable.');
     await select();
     return 'future';
   }
-  const current = ownedConfig(root, initial);
+  const current = ownedConfig(root, initial, context);
   if (!current) throw new CodexSwitchError('The Quickstart Codex configuration was edited. Review it before switching.');
-  const after = configText(root, target, current.hideDefault);
+  const after = configText(root, target, current.hideDefault, context);
   const lock = join(root, '.codex/.ordering-project-switch');
   try {
     await mkdir(lock, { mode: 0o700 });
@@ -134,24 +152,32 @@ export async function switchCodexProject(root, target, select, connect = action 
   }
   try {
     return await connect(async rpc => {
-      const match = await checkoutThread(root, rpc);
+      const match = await checkoutThread(root, rpc, context.conversation);
+      if (context.threadId && match?.threadId !== context.threadId) {
+        throw new CodexSwitchError('This selector belongs to a different Codex conversation. Open its own selector.');
+      }
       let threadId;
       if (match) {
         threadId = match.threadId;
         idle(match.thread);
         const { config } = await rpc('config/read', { cwd: match.thread.cwd });
         const server = config?.mcp_servers?.[serverName];
+        const defaultServer = config?.mcp_servers?.ordering;
+        if (context.conversation && defaultServer && defaultServer.enabled !== false) {
+          throw new CodexSwitchError('Codex also has a default Ordering connection here. Reopen this conversation through Quickstart.');
+        }
         if (server?.enabled === false || server?.url || server?.command !== '/bin/bash' ||
-            JSON.stringify(server.args) !== JSON.stringify(launcher(root, current.project))) {
-          throw new CodexSwitchError('Open this checkout with ./ordering codex --live and allow its project configuration.');
+            JSON.stringify(server.args) !== JSON.stringify(launcher(root, current.project, context))) {
+          throw new CodexSwitchError('Allow the project configuration in the Codex conversation before switching.');
         }
         await verifyProject(rpc, threadId, current.project);
+        if (context.conversation) context.threadId = threadId;
       }
       await writeConfig(root, initial, after);
       try {
         if (threadId) {
           await rpc('config/mcpServer/reload');
-          const refreshed = await checkoutThread(root, rpc);
+          const refreshed = await checkoutThread(root, rpc, context.conversation);
           if (refreshed?.threadId !== threadId) throw new CodexSwitchError('The open Codex chat changed during the switch.');
           idle(refreshed.thread);
           await verifyProject(rpc, threadId, target);

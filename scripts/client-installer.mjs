@@ -17,7 +17,9 @@ const saveManifest = value => {
   renameSync(temporary, manifestPath);
 };
 const command = '/bin/bash';
-const args = [join(root, 'ordering'), 'mcp'];
+const localArgs = [join(root, 'ordering'), 'mcp'];
+const globalArgs = [join(root, 'ordering'), '--global', 'mcp'];
+const args = process.argv[5] === '--global' ? globalArgs : localArgs;
 const opencodeVersion = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 5000 });
 const opencodeV2 = /\bv([2-9]|[1-9][0-9]+)\./.test(opencodeVersion.stdout ?? '');
 const jsonc = await import(pathToFileURL(join(runtime, 'node_modules/jsonc-parser/lib/umd/main.js')));
@@ -34,17 +36,19 @@ const writeOpenCodeV2 = (path, existing) => {
   writeFileSync(path, text, { mode: 0o600 });
   return { success: true };
 };
-const owned = config => {
+const matchesLauncher = (config, launcherArgs) => {
   const parts = Array.isArray(config.command) ? config.command : [config.command ?? config.cmd, ...(Array.isArray(config.args) ? config.args : [])];
-  return JSON.stringify(parts) === JSON.stringify([command, ...args]);
+  return JSON.stringify(parts) === JSON.stringify([command, ...launcherArgs]);
 };
+const owned = config => matchesLauncher(config, args);
 // An HTTP entry for another project may belong to a different setup/session.
 // The helper already passes its verified target project as argv[4]; an unknown
 // target cannot authorize migrating a non-owned HTTP configuration.
 const targetProject = process.argv[4];
 const targetUrl = targetProject && /^[a-zA-Z0-9_-]+$/.test(targetProject)
   ? `https://api.ordering.co/mcp/${targetProject}` : null;
-const sameServer = config => owned(config) || (targetUrl !== null && (config.url ?? config.httpUrl) === targetUrl);
+const sameServer = config => matchesLauncher(config, localArgs) || matchesLauncher(config, globalArgs) ||
+  (targetUrl !== null && (config.url ?? config.httpUrl) === targetUrl);
 const disabled = config => config.disabled === true || config.enabled === false;
 const readClients = recorded => listInstalledServers({ global: true, ...(recorded?.length ? { agents: recorded } : {}) });
 

@@ -18,7 +18,8 @@
 #   ./ordering reset             logout, then sign in again (same flags as login)
 #   ./ordering claude [args]     Start Claude Code with your .env loaded
 #   ./ordering codex [args]      Start Codex with the Ordering MCP configured
-#   ./ordering codex --live      Start a Codex chat for browser project switching
+#   ./ordering codex --live [--project PROJECT] [--cwd DIRECTORY]
+#                                Start a Codex conversation with its own web selector
 #   ./ordering cursor | code     Open this folder in Cursor or VS Code with your .env loaded
 #   ./ordering api [--yes] METHOD PATH [JSON | @file.json]
 #                                Call the REST API (non-GET requests ask for confirmation,
@@ -37,6 +38,25 @@ set -euo pipefail
 umask 077   # every file this script writes (.env, temporary keys) is private
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GLOBAL_MODE=""
+if [ "${1:-}" = --global ]; then
+  : "${HOME:?Set HOME before using the global project store}"
+  GLOBAL_MODE=--global
+  shift
+fi
+PINNED_PROJECT=""
+if [ "${1:-}" = --project ]; then
+  if [ "$#" -lt 3 ] || ! [[ "$2" =~ ^[a-z0-9_-]+$ ]]; then
+    printf '%s\n' 'Usage: ./ordering [--global] --project PROJECT api|doctor|mcp' >&2
+    exit 1
+  fi
+  PINNED_PROJECT="$2"
+  shift 2
+  case "$1" in
+    api|doctor|mcp) ;;
+    *) printf '%s\n' 'Use --project before api, doctor or mcp.' >&2; exit 1 ;;
+  esac
+fi
 # Public repository operations never enter credential/environment loading.
 if [ "${1:-}" = repos ]; then
   shift
@@ -48,7 +68,7 @@ if [ "${1:-}" = projects ] && [ "${2:-}" = web ]; then
   shift 2
   unset NODE_OPTIONS NODE_PATH ORDERING_MCP_KEY ORDERING_API_KEY ORDERING_TEST_EMAIL ORDERING_TEST_PASSWORD
   command -v node >/dev/null 2>&1 || { echo "Node.js 22+ is required for ordering projects web" >&2; exit 1; }
-  exec node "$ROOT/scripts/projects-web/server.mjs" "$@"
+  exec node "$ROOT/scripts/projects-web/server.mjs" ${GLOBAL_MODE:+"$GLOBAL_MODE"} "$@"
 fi
 API_HOST="${ORDERING_API_HOST:-https://api.ordering.co}"
 case "$API_HOST" in
@@ -78,7 +98,9 @@ die()   { printf '%serror:%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
 # Reads ORDERING_* variables from .env without executing it.
 # Values in .env win over your shell, so a key you just replaced in .env is
 # used right away. Variables missing from .env fall back to your shell.
+GLOBAL_PROJECTS_DIR="${HOME:-}/.config/ordering-quickstart/projects"
 PROJECTS_DIR="$ROOT/.ordering-projects"
+[ -z "$GLOBAL_MODE" ] || PROJECTS_DIR="$GLOBAL_PROJECTS_DIR"
 ACTIVE_PROJECT="$PROJECTS_DIR/active"
 PROFILE_PROJECT=""
 ENV_FILE="$ROOT/.env"
@@ -365,18 +387,36 @@ cmd_claude() {
 
 cmd_codex() {
   have codex || die "Codex is not installed. See https://developers.openai.com/codex"
-  require_project
-  cd "$ROOT"
   unset ORDERING_API_KEY
   if [ "${1:-}" = --live ]; then
     shift
+    local project="" directory=""
+    local options=()
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --project|--cwd)
+          [ "$#" -ge 2 ] && [ -n "$2" ] || die "Expected a value for $1."
+          if [ "$1" = --project ]; then project="$2"; else directory="$2"; fi
+          shift 2 ;;
+        --) shift; break ;;
+        *) break ;;
+      esac
+    done
+    if [ -n "$project" ]; then
+      load_project "$project"
+    else
+      load_default_project
+      project="${ORDERING_PROJECT:-}"
+      valid_project "$project" || die "Specify a saved project ID with --project PROJECT."
+    fi
     [ -n "${ORDERING_MCP_KEY:-}" ] || die "No MCP key. Run ./ordering login."
-    unset ORDERING_MCP_KEY ORDERING_TEST_EMAIL ORDERING_TEST_PASSWORD NODE_OPTIONS NODE_PATH
+    unset ORDERING_MCP_KEY ORDERING_API_KEY ORDERING_TEST_EMAIL ORDERING_TEST_PASSWORD NODE_OPTIONS NODE_PATH
     client_runtime
-    codex app-server daemon start >/dev/null
-    node "$ROOT/scripts/codex-projects.mjs" "$ROOT" "$ORDERING_PROJECT"
-    exec codex --remote unix:// -C "$ROOT" "$@"
+    [ -z "$GLOBAL_MODE" ] || options+=("$GLOBAL_MODE")
+    exec node "$ROOT/scripts/codex-conversation.mjs" "$project" "$directory" ${options[@]+"${options[@]}"} -- "$@"
   fi
+  require_project
+  cd "$ROOT"
   exec codex \
     -c "mcp_servers.ordering.url=\"$(mcp_url)\"" \
     -c 'mcp_servers.ordering.bearer_token_env_var="ORDERING_MCP_KEY"' \
@@ -849,7 +889,7 @@ client_runtime() {
 client_action() {
   [ -f "$ROOT/.clients/node-path" ] || die "Clients are not installed. Run ./ordering install."
   local node_path; node_path="$(cat "$ROOT/.clients/node-path")"
-  "$node_path" "$ROOT/scripts/client-installer.mjs" "$ROOT" "$1" "${ORDERING_PROJECT:-}"
+  "$node_path" "$ROOT/scripts/client-installer.mjs" "$ROOT" "$1" "${ORDERING_PROJECT:-}" "$GLOBAL_MODE"
 }
 
 cmd_mcp() {
@@ -1409,6 +1449,29 @@ cmd_google_maps() {
 
 valid_project() { [[ "$1" =~ ^[a-z0-9_-]+$ ]]; }
 
+private_path() {
+  local path="$1" kind="$2" mode
+  [ ! -L "$path" ] || die "Global project storage must not contain symbolic links."
+  [ -e "$path" ] || return 0
+  [ -O "$path" ] || die "Global project storage must be owned by your user."
+  if [ "$kind" = directory ]; then
+    [ -d "$path" ] || die "Expected a private directory in global project storage."
+  else
+    [ -f "$path" ] || die "Expected a private file in global project storage."
+  fi
+  if [ "$(uname)" = Darwin ]; then mode="$(stat -f '%Lp' "$path")"; else mode="$(stat -c '%a' "$path")"; fi
+  if [ "$kind" = directory ]; then
+    [ "$mode" = 700 ] || die "Global project directories must have permissions 700."
+  else
+    [ "$mode" = 600 ] || die "Global project files must have permissions 600."
+  fi
+}
+
+global_storage() {
+  private_path "${GLOBAL_PROJECTS_DIR%/*}" directory
+  private_path "$GLOBAL_PROJECTS_DIR" directory
+}
+
 # Stage all credential changes together so a launcher sees one complete connection.
 save_credentials() (
   local mode="$1" destination="$ENV_FILE" staged
@@ -1437,6 +1500,11 @@ profile_context() {
   local directory="$PROJECTS_DIR/$1"
   valid_project "$1" || die "Use a project ID with lowercase letters, numbers, hyphens or underscores."
   [ ! -L "$PROJECTS_DIR" ] && [ ! -L "$directory" ] || die "Project storage must be a local directory."
+  if [ -n "$GLOBAL_MODE" ]; then
+    global_storage
+    private_path "$directory" directory
+    private_path "$directory/.env" file
+  fi
   PROFILE_PROJECT="$1"
   ENV_FILE="$directory/.env"
   LOGIN_DIR="$directory/.login"
@@ -1459,7 +1527,42 @@ saved_project() (
 )
 
 active_project() {
+  if [ -n "$GLOBAL_MODE" ]; then
+    global_storage
+    private_path "$ACTIVE_PROJECT" file
+  fi
   [ ! -e "$ACTIVE_PROJECT" ] || cat "$ACTIVE_PROJECT"
+}
+
+legacy_project() {
+  [ -z "$GLOBAL_MODE" ] && saved_project "$ROOT/.env"
+}
+
+load_project() {
+  local project="$1"
+  valid_project "$project" || die "Specify a saved project ID with --project PROJECT."
+  if [ "$project" = "$(legacy_project || true)" ]; then
+    ENV_FILE="$ROOT/.env"
+    PROFILE_PROJECT=""
+    clear_project_env
+    load_env
+  else
+    profile_context "$project"
+    [ -f "$ENV_FILE" ] || die "The requested project is not saved in this project store."
+  fi
+}
+
+load_default_project() {
+  local active
+  active="$(active_project)"
+  if [ -n "$active" ]; then
+    profile_context "$active"
+    [ -f "$ENV_FILE" ] || die "The selected project is missing. Run ./ordering projects use to select another one."
+  elif [ -z "$GLOBAL_MODE" ]; then
+    load_env
+  else
+    clear_project_env
+  fi
 }
 
 print_project() {
@@ -1478,7 +1581,7 @@ print_project() {
 list_projects() {
   local format="${1:-human}" active legacy file project state
   active="$(active_project)"
-  legacy="$(saved_project "$ROOT/.env" || true)"
+  legacy="$(legacy_project || true)"
   if [ -n "$legacy" ]; then
     state=saved
     [ -n "$active" ] || state=active
@@ -1486,6 +1589,10 @@ list_projects() {
   fi
   for file in "$PROJECTS_DIR"/*/.env; do
     [ -f "$file" ] || continue
+    if [ -n "$GLOBAL_MODE" ]; then
+      private_path "${file%/.env}" directory
+      private_path "$file" file
+    fi
     project="${file%/.env}"; project="${project##*/}"
     [ "$(saved_project "$file" || true)" = "$project" ] || continue
     state=saved
@@ -1496,8 +1603,9 @@ list_projects() {
 
 select_project() {
   local project="$1" temporary
+  [ "$project" != --legacy ] || [ -z "$GLOBAL_MODE" ] || die "The checkout's .env is only available without --global."
   if [ "$project" = --legacy ] || {
-    valid_project "$project" && [ "$project" = "$(saved_project "$ROOT/.env" || true)" ];
+    valid_project "$project" && [ "$project" = "$(legacy_project || true)" ];
   }; then
     rm -f "$ACTIVE_PROJECT"
     ok "Using the legacy connection in this checkout."
@@ -1505,20 +1613,22 @@ select_project() {
     valid_project "$project" || die "Invalid project ID."
     profile_context "$project"
     [ -n "${ORDERING_MCP_KEY:-}${ORDERING_API_KEY:-}" ] || die "No credentials saved for '$project'. Run ./ordering projects add $project."
+    if [ -n "$GLOBAL_MODE" ]; then private_path "$ACTIVE_PROJECT" file; fi
     temporary="$(mktemp "$PROJECTS_DIR/active.XXXXXX")"
     printf '%s\n' "$project" > "$temporary"
     mv -f "$temporary" "$ACTIVE_PROJECT"
-    ok "Using project '$project' in this checkout."
+    if [ -n "$GLOBAL_MODE" ]; then
+      ok "Using project '$project' as the default for new global connections."
+    else
+      ok "Using project '$project' in this checkout."
+    fi
   fi
   hint "Reload connected MCP clients and run whoami to confirm the project in each client."
 }
 
-import_legacy_project() {
-  local directory project key api_key language
-  directory="$(cd -- "$1" && pwd -P)" || die "Quickstart checkout not found."
-  [ "$directory" != "$ROOT" ] || die "This checkout already includes its legacy connection."
-  [ -x "$directory/ordering" ] && [ -f "$directory/.env" ] || die "Expected a Quickstart checkout with an existing .env."
-  ENV_FILE="$directory/.env"
+import_profile() {
+  local project key api_key language
+  ENV_FILE="$1"
   clear_project_env
   load_env
   project="${ORDERING_PROJECT:-}"
@@ -1526,9 +1636,9 @@ import_legacy_project() {
   api_key="${ORDERING_API_KEY:-}"
   language="$(lang)"
   valid_project "$project" && [ -n "$key" ] || die "The source has no saved MCP connection."
-  [ "$project" != "$(saved_project "$ROOT/.env" || true)" ] || die "This checkout already has a legacy connection for '$project'."
+  [ "$project" != "$(legacy_project || true)" ] || die "This checkout already has a legacy connection for '$project'."
   profile_context "$project"
-  [ ! -e "$ENV_FILE" ] || die "A local profile for '$project' already exists."
+  [ ! -e "$ENV_FILE" ] || die "A saved profile for '$project' already exists. Its credentials were preserved."
   mcp_whoami "$project" "$key"
   [ "$HTTP_CODE" = 200 ] && [ "$(json_get "$MCP_BODY" result.structuredContent.project)" = "$project" ] ||
     die "The source MCP key could not be verified on '$project'. Sign in with ./ordering projects add $project."
@@ -1540,7 +1650,25 @@ import_legacy_project() {
   mkdir -p "$PROJECTS_DIR/$project"
   save_credentials create "$project" "$key" "$api_key" "$language"
   ok "Imported the verified connection for '$project'."
-  hint "Select it with ./ordering projects use $project."
+  hint "Select it with ./ordering ${GLOBAL_MODE:+$GLOBAL_MODE }projects use $project."
+}
+
+import_legacy_project() {
+  local directory
+  directory="$(cd -- "$1" && pwd -P)" || die "Quickstart checkout not found."
+  [ -x "$directory/ordering" ] && [ -f "$directory/.env" ] || die "Expected a Quickstart checkout with an existing .env."
+  import_profile "$directory/.env"
+}
+
+share_project() {
+  local project="$1"
+  [ -z "$GLOBAL_MODE" ] || die "Run ./ordering projects share PROJECT from the checkout that saved it."
+  [ -n "${HOME:-}" ] || die "Set HOME before using the global project store."
+  load_project "$project"
+  local source="$ENV_FILE"
+  GLOBAL_MODE=--global
+  PROJECTS_DIR="$GLOBAL_PROJECTS_DIR"
+  import_profile "$source"
 }
 
 cmd_projects() {
@@ -1571,6 +1699,10 @@ cmd_projects() {
       [ "$#" -eq 1 ] || die "Usage: ./ordering projects import QUICKSTART_DIRECTORY"
       import_legacy_project "$1"
       ;;
+    share)
+      [ "$#" -eq 1 ] || die "Usage: ./ordering projects share PROJECT"
+      share_project "$1"
+      ;;
     add)
       [ "$#" -gt 0 ] || die "Usage: ./ordering projects add PROJECT [start|wait|code]"
       project="$1"; shift
@@ -1578,13 +1710,13 @@ cmd_projects() {
         [ "$option" != --install ] || die "Select the project before running ./ordering install."
       done
       valid_project "$project" || die "Invalid project ID."
-      [ "$project" != "$(saved_project "$ROOT/.env" || true)" ] || die "The legacy connection already uses '$project'. Select it and run ./ordering login to renew it."
+      [ "$project" != "$(legacy_project || true)" ] || die "The legacy connection already uses '$project'. Select it and run ./ordering login to renew it."
       profile_context "$project"
       case "${1:-}" in wait|code) ;; *) mkdir -p "$PROJECTS_DIR/$project" ;; esac
       hint "This sign-in is for '$project'. Select that project in the browser."
       cmd_login "$@"
       ;;
-    *) die "Usage: ./ordering projects [list|add PROJECT|import QUICKSTART_DIRECTORY|use [PROJECT|--legacy]|web [--port PORT]]" ;;
+    *) die "Usage: ./ordering [--global] projects [list|add PROJECT|import QUICKSTART_DIRECTORY|share PROJECT|use [PROJECT|--legacy]|web]" ;;
   esac
 }
 
@@ -1593,6 +1725,7 @@ cmd_projects() {
 usage() {
   sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
+  echo "Use --global for the OS user's shared profiles. Pin api, doctor or mcp with --project PROJECT."
   echo "Docs: $DOCS_URL"
 }
 
@@ -1601,24 +1734,21 @@ if [ "$cmd" = projects ]; then
   cmd_projects "$@"
   exit
 fi
-if [ "$cmd" = mcp ] && [ "$#" -gt 0 ]; then
+if [ -n "$PINNED_PROJECT" ]; then
+  if [ "$cmd" = mcp ] && [ "$#" -gt 0 ]; then die "Specify --project only once."; fi
+  load_project "$PINNED_PROJECT"
+elif [ "$cmd" = mcp ] && [ "$#" -gt 0 ]; then
   if [ "$#" -ne 2 ] || [ "$1" != --project ] || ! valid_project "$2"; then
     die "Usage: ./ordering mcp [--project PROJECT]"
   fi
-  if [ "$2" = "$(saved_project "$ROOT/.env" || true)" ]; then
-    clear_project_env
-    load_env
-  else
-    profile_context "$2"
-    [ -f "$ENV_FILE" ] || die "The requested project is not saved in this checkout."
-  fi
-else
-  active="$(active_project)"
-  if [ -n "$active" ]; then
-    profile_context "$active"
-    [ -f "$ENV_FILE" ] || die "The selected project is missing. Run ./ordering projects use to select another one."
-  else
-    load_env
+  load_project "$2"
+elif [ "$cmd" != codex ] || [ "${1:-}" != --live ]; then
+  load_default_project
+  if [ -n "$GLOBAL_MODE" ] && [ -z "$PROFILE_PROJECT" ]; then
+    case "$cmd" in
+      login|init|logout|disconnect|reset)
+        die "Select a global project first, or run ./ordering --global projects add PROJECT." ;;
+    esac
   fi
 fi
 case "$cmd" in
