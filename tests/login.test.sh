@@ -380,6 +380,26 @@ check "import can select the saved legacy project" '"$WORK/pilot/ordering" proje
 rc=0; "$WORK/pilot/ordering" projects import "$WORK/repo" > /dev/null 2>&1 || rc=$?
 check "import cannot overwrite existing profiles" '[ "$rc" != 0 ]'
 
+echo "# global profiles shared by separate checkouts"
+mkdir "$WORK/global-home"
+HOME="$WORK/global-home" "$WORK/repo/ordering" projects share orderingtest > "$WORK/share.out"
+HOME="$WORK/global-home" "$WORK/repo/ordering" projects share second-project >> "$WORK/share.out"
+shared="$WORK/global-home/.config/ordering-quickstart/projects"
+check "sharing verifies profiles and does not print credentials" '! grep -q "$KEY" "$WORK/share.out" && cmp -s "$WORK/repo/.env" "$WORK/legacy.env"'
+check "shared directory and profiles are private" '[ "$(perms "$shared")" = 700 ] && [ "$(perms "$shared/second-project/.env")" = 600 ]'
+HOME="$WORK/global-home" "$WORK/pilot/ordering" --global projects use second-project > /dev/null
+HOME="$WORK/global-home" "$WORK/repo/ordering" --global doctor > "$WORK/global.out"
+check "the shared selection works in another checkout" 'grep -q "Project .second-project. found" "$WORK/global.out" && grep -q "Connected as" "$WORK/global.out"'
+HOME="$WORK/global-home" "$WORK/pilot/ordering" --global --project orderingtest doctor > "$WORK/pinned.out"
+check "an explicit shared project overrides the default for that command" 'grep -q "Project .orderingtest. found" "$WORK/pinned.out" && grep -q "Connected as" "$WORK/pinned.out"'
+HOME="$WORK/global-home" "$WORK/repo/ordering" projects list > "$WORK/local.out"
+check "the shared default does not change the local selection" 'grep -q "orderingtest.*active" "$WORK/local.out"'
+rc=0; HOME="$WORK/global-home" "$WORK/repo/ordering" projects share orderingtest > /dev/null 2>&1 || rc=$?
+check "reimport refuses to overwrite an existing shared connection" '[ "$rc" != 0 ]'
+chmod 644 "$shared/second-project/.env"
+rc=0; HOME="$WORK/global-home" "$WORK/pilot/ordering" --global projects list > "$WORK/insecure.out" 2>&1 || rc=$?
+check "insecure global credential files are rejected" '[ "$rc" != 0 ] && grep -q "permissions 600" "$WORK/insecure.out"'
+
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }
 H64="$(printf %064d 0)"; H32="$(printf %032d 1)"

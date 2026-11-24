@@ -85,3 +85,43 @@ test('the local selector lists and switches the same projects as the CLI', async
   assert.equal(emptyPage.status, 200);
   assert.match(await emptyPage.text(), /No projects are connected in this checkout/);
 });
+
+test('the shared selector requires its printed URL and leaves the checkout selection alone', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'ordering-shared-web-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  cpSync(new URL('../ordering', import.meta.url), join(root, 'ordering'));
+  cpSync(new URL('../scripts', import.meta.url), join(root, 'scripts'), { recursive: true });
+  const home = join(root, 'home');
+  const profile = join(home, '.config', 'ordering-quickstart', 'projects', 'shared-project');
+  mkdirSync(profile, { recursive: true, mode: 0o700 });
+  const key = 'ord_mcp_' + randomBytes(24).toString('hex');
+  writeFileSync(join(profile, '.env'), `ORDERING_PROJECT=shared-project\nORDERING_MCP_KEY=${key}\n`, { mode: 0o600 });
+  writeFileSync(join(root, '.env'), `ORDERING_PROJECT=local-project\nORDERING_MCP_KEY=${key}\n`);
+  const ordering = join(root, 'ordering');
+  const env = { ...process.env, HOME: home };
+  const server = spawn(ordering, ['--global', 'projects', 'web', '--port', '0'], { env, stdio: ['ignore', 'pipe', 'ignore'] });
+  const closed = once(server, 'close');
+  t.after(async () => {
+    server.kill();
+    await closed;
+  });
+  const address = await Promise.race([
+    once(server.stdout, 'data').then(([chunk]) => chunk.toString().match(/http:\/\/127\.0\.0\.1:\d+\/[^\s]+/)?.[0]),
+    closed.then(([code]) => assert.fail(`Server exited (${code})`)),
+  ]);
+  assert.ok(address);
+  const page = await fetch(address);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /shared-project/);
+  assert.doesNotMatch(html, /local-project/);
+  assert.ok(!html.includes(key));
+  assert.equal((await fetch(new URL('brand/InterVariable.woff2', address))).status, 200);
+  const base = new URL(address).origin;
+  assert.equal((await fetch(base)).status, 404);
+  const params = { method: 'POST', headers: { Origin: base }, body: new URLSearchParams({ project: 'shared-project' }) };
+  assert.equal((await fetch(base + '/select', params)).status, 404);
+  const switched = await fetch(new URL('select', address), params);
+  assert.match(await switched.text(), /New MCP sessions will use this project/);
+  assert.match(execFileSync(ordering, ['projects', 'list'], { env, encoding: 'utf8' }), /local-project \(legacy, active\)/);
+});

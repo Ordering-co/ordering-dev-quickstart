@@ -53,9 +53,18 @@ One Quickstart checkout supports multiple Ordering projects. Add each connection
 
 For the web selector, use Node.js 22+ and open [http://127.0.0.1:4317/](http://127.0.0.1:4317/) while the command is running. Add `--port PORT` if you need a different port. To switch from the terminal, run `./ordering projects use` or pass the project ID directly.
 
-To switch inside an open Codex chat, start it with `./ordering codex --live` and allow this checkout's configuration if Codex asks. Keep one idle Codex chat open in the checkout. The browser verifies the new project in that chat before confirming the switch.
+To reuse a saved connection across checkouts and clients, run `./ordering projects share PROJECT` once per project. Use `./ordering --global projects add PROJECT` for new shared profiles. Your OS user owns the shared store at `~/.config/ordering-quickstart/projects`.
 
-Other MCP clients pick up the project when they launch a new connection. See [multiple local projects](docs/credentials.md#multiple-local-projects).
+Open two independent Codex conversations in separate terminals:
+
+```bash
+./ordering --global codex --live --project FIRST_PROJECT
+./ordering --global codex --live --project SECOND_PROJECT
+```
+
+Each command prints a localhost URL for its own conversation. Allow the project's configuration if Codex asks. Open that URL and switch while the chat is idle. Quickstart confirms the project with `whoami` in that chat. Use `--cwd DIRECTORY` to work in a specific directory, with one managed chat per directory. Without it, Quickstart creates a private working directory for each conversation.
+
+For other MCP clients, use `./ordering --global projects use PROJECT` and `./ordering --global install` to register the shared default for new connections. See [multiple local projects](docs/credentials.md#multiple-local-projects).
 
 ## 4 · Optional · Get all seven Ordering products
 

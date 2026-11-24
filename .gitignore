@@ -31,3 +31,4 @@ node_modules/
 # Scoped Codex configuration and switch lock created by ordering codex --live
 /.codex/config.toml
 /.codex/.ordering-project-switch/
+/.codex/.ordering-live-session/

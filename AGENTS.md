@@ -17,7 +17,7 @@ You are working in the Ordering.co developer quickstart. A developer uses this r
 
 ## Setting up
 
-If the developer wants to connect, follow [SETUP.md](SETUP.md) step by step. To add a second project, use `./ordering projects add PROJECT start` and `./ordering projects add PROJECT wait`; use `projects list` to see saved project IDs and `projects use PROJECT` to switch. Check the selected project with `doctor` and have clients using the Quickstart launcher reload and report `whoami` before using project data.
+If the developer wants to connect, follow [SETUP.md](SETUP.md) step by step. To add a second project, use `./ordering projects add PROJECT start` and `./ordering projects add PROJECT wait`. Prefix commands with `--global` for the user-wide store. Treat its files as secrets and use `projects list` to inspect saved IDs. To work in parallel, open each Codex conversation with `./ordering --global codex --live --project PROJECT` and use its own selector. Check `whoami` in the intended conversation before using project data.
 
 ## Completing setup
 
