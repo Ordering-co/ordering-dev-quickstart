@@ -24,6 +24,7 @@ Each Quickstart checkout has its own project selector. The existing connection i
 
 | Command | What it does |
 |---|---|
+| `./ordering projects web` | Starts the browser selector on `http://127.0.0.1:4317/`. Requires Node.js 22+ and uses the same saved projects and active selection as the CLI. Use `--port PORT` if the port is busy. |
 | `./ordering projects list` | Lists the saved project IDs and marks the current selection. Run `doctor` to verify authentication or expiry. |
 | `./ordering projects add PROJECT` | Signs in to the requested project and saves its own credentials. The current selection stays in effect. |
 | `./ordering projects add PROJECT start` and `./ordering projects add PROJECT wait` | Run the same sign-in in two steps for an agent or a separate terminal. Use `code` to redisplay the pending code. |

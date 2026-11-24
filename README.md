@@ -42,16 +42,18 @@ This quickstart and the optional plugin are public under the Ordering-co organiz
 
 &nbsp;
 
-## Connect another project
+## Connect and switch between multiple projects
+
+One Quickstart checkout supports multiple Ordering projects. Add each connection once, then switch projects from your browser or terminal.
 
 ```bash
 ./ordering projects add PROJECT
-./ordering projects list
-./ordering projects use PROJECT
-./ordering doctor
+./ordering projects web
 ```
 
-Choose the requested project in the browser. Adding a connection keeps the current selection. Run `./ordering projects use` for an interactive selector, or pass the project ID directly. Reload any MCP client using this checkout's launcher and ask “Who am I in Ordering?” before running project operations. See [multiple local projects](docs/credentials.md#multiple-local-projects).
+For the web selector, use Node.js 22+ and open [http://127.0.0.1:4317/](http://127.0.0.1:4317/) while the command is running. Add `--port PORT` if you need a different port. To switch from the terminal, run `./ordering projects use` or pass the project ID directly.
+
+After switching, run `./ordering doctor`, reload any MCP client using this checkout's launcher, and ask “Who am I in Ordering?” before running project operations. See [multiple local projects](docs/credentials.md#multiple-local-projects).
 
 ## 4 · Optional · Get all seven Ordering products
 

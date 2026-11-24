@@ -60,6 +60,8 @@ jobs:
           node-version: 22
       - name: Public product catalog tests (isolated local Git fixtures)
         run: node --test tests/catalog.test.mjs
+      - name: Local project selector tests
+        run: node --test tests/projects-web.test.mjs
       - name: Login protocol tests
         run: bash tests/login.test.sh
       - name: Google Maps key setup tests (fake gcloud)

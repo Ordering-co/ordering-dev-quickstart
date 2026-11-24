@@ -6,6 +6,7 @@
 #                                USER block verbatim; "login code" re-shows the current code)
 #   ./ordering init [SERVER_URL] Create .env, set your project from the Server URL, open the file
 #   ./ordering projects           List, add or select local Ordering connections
+#   ./ordering projects web       Open the local project selector in a browser
 #   ./ordering doctor            Check your project, MCP key and API key
 #   ./ordering install           Register and verify Ordering in detected MCP clients globally
 #   ./ordering prepare           Prepare the locked launcher without global registration
@@ -41,6 +42,12 @@ if [ "${1:-}" = repos ]; then
   unset NODE_OPTIONS NODE_PATH
   command -v node >/dev/null 2>&1 || { echo "Node.js 22+ is required for ordering repos" >&2; exit 1; }
   exec node "$ROOT/scripts/catalog/cli.mjs" "$@"
+fi
+if [ "${1:-}" = projects ] && [ "${2:-}" = web ]; then
+  shift 2
+  unset NODE_OPTIONS NODE_PATH ORDERING_MCP_KEY ORDERING_API_KEY ORDERING_TEST_EMAIL ORDERING_TEST_PASSWORD
+  command -v node >/dev/null 2>&1 || { echo "Node.js 22+ is required for ordering projects web" >&2; exit 1; }
+  exec node "$ROOT/scripts/projects-web/server.mjs" "$@"
 fi
 API_HOST="${ORDERING_API_HOST:-https://api.ordering.co}"
 case "$API_HOST" in
@@ -1445,20 +1452,35 @@ active_project() {
   [ ! -e "$ACTIVE_PROJECT" ] || cat "$ACTIVE_PROJECT"
 }
 
+print_project() {
+  local project="$1" state="$2" kind="$3" format="$4"
+  if [ "$format" = tsv ]; then
+    printf '%s\t%s\n' "$project" "$state"
+  elif [ "$kind" = legacy ] && [ "$state" = active ]; then
+    printf '%s (legacy, active)\n' "$project"
+  elif [ "$kind" = legacy ] || [ "$state" = active ]; then
+    printf '%s (%s)\n' "$project" "${kind:-$state}"
+  else
+    printf '%s\n' "$project"
+  fi
+}
+
 list_projects() {
-  local active legacy file project label
+  local format="${1:-human}" active legacy file project state
   active="$(active_project)"
   legacy="$(saved_project "$ROOT/.env" || true)"
   if [ -n "$legacy" ]; then
-    label="legacy"
-    [ -n "$active" ] || label="legacy, active"
-    printf '%s (%s)\n' "$legacy" "$label"
+    state=saved
+    [ -n "$active" ] || state=active
+    print_project "$legacy" "$state" legacy "$format"
   fi
   for file in "$PROJECTS_DIR"/*/.env; do
     [ -f "$file" ] || continue
     project="${file%/.env}"; project="${project##*/}"
     [ "$(saved_project "$file" || true)" = "$project" ] || continue
-    if [ "$project" = "$active" ]; then printf '%s (active)\n' "$project"; else printf '%s\n' "$project"; fi
+    state=saved
+    [ "$project" != "$active" ] || state=active
+    print_project "$project" "$state" "" "$format"
   done
 }
 
@@ -1516,9 +1538,12 @@ cmd_projects() {
   [ "$#" -eq 0 ] || shift
   case "$action" in
     list)
-      [ "$#" -eq 0 ] || die "Usage: ./ordering projects list"
-      output="$(list_projects)"
-      if [ -n "$output" ]; then printf '%s\n' "$output"; else hint "No saved projects. Run ./ordering projects add PROJECT."; fi
+      case "$#:${1:-}" in
+        0:) output="$(list_projects)"
+            if [ -n "$output" ]; then printf '%s\n' "$output"; else hint "No saved projects. Run ./ordering projects add PROJECT."; fi ;;
+        1:--tsv) list_projects tsv ;;
+        *) die "Usage: ./ordering projects list [--tsv]" ;;
+      esac
       ;;
     use)
       [ "$#" -le 1 ] || die "Usage: ./ordering projects use [PROJECT|--legacy]"
@@ -1549,14 +1574,14 @@ cmd_projects() {
       hint "This sign-in is for '$project'. Select that project in the browser."
       cmd_login "$@"
       ;;
-    *) die "Usage: ./ordering projects [list|add PROJECT|import QUICKSTART_DIRECTORY|use [PROJECT|--legacy]]" ;;
+    *) die "Usage: ./ordering projects [list|add PROJECT|import QUICKSTART_DIRECTORY|use [PROJECT|--legacy]|web [--port PORT]]" ;;
   esac
 }
 
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
