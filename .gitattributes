@@ -1,3 +1,6 @@
 * text=auto
 ordering text eol=lf
 *.sh text eol=lf
+
+# Preserve the exact released OFL bytes and checksum.
+scripts/projects-web/brand/JetBrainsMono-OFL.txt whitespace=-blank-at-eol

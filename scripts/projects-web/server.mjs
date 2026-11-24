@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { readBrand } from './brand.mjs';
 
 if (Number(process.versions.node.split('.')[0]) < 22) {
   console.error('Node.js 22+ is required for ordering projects web.');
@@ -20,6 +21,7 @@ const ordering = fileURLToPath(new URL('../../ordering', import.meta.url));
 const run = promisify(execFile);
 const command = (...argv) => run(ordering, ['projects', ...argv], { encoding: 'utf8', timeout: 5000 });
 const projectId = /^[a-z0-9_-]+$/;
+const brand = await readBrand();
 const css = await readFile(new URL('./style.css', import.meta.url));
 
 async function projects() {
@@ -35,7 +37,7 @@ function page(saved, error = '') {
   const count = saved.length;
   const rows = saved.map(({ id, active }) => `
     <li class="project${active ? ' project-active' : ''}">
-      <div class="identity"><span class="monogram" aria-hidden="true">${id.slice(0, 2)}</span><span class="project-name">${id}</span></div>
+      <span class="project-name">${id}</span>
       ${active ? '<span class="badge">Active</span>' : `<form method="post" action="/select">
         <button type="submit" name="project" value="${id}" aria-label="Select project ${id}">Select</button>
       </form>`}
@@ -45,12 +47,20 @@ function page(saved, error = '') {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Local projects | Ordering Quickstart</title>
+  <title>Local projects | Ordering.co Quickstart</title>
+  <link rel="icon" href="/brand/favicon.ico">
+  <link rel="stylesheet" href="/brand.css">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main>
-    <header><span class="brand">Ordering.co</span><span class="product">Developer Quickstart</span></header>
+    <header>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/brand/ordering-lockup-color-reversed.svg">
+        <img src="/brand/ordering-lockup-color.svg" alt="Ordering.co" width="132">
+      </picture>
+      <span class="product">Developer Quickstart</span>
+    </header>
     <h1>Local projects</h1>
     <p class="intro">Choose the project Quickstart uses for new commands and MCP sessions.</p>
     ${error ? `<p class="error" role="alert">${error}</p>` : ''}
@@ -76,7 +86,7 @@ function show(response, status, saved, error) {
 const server = createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+  response.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
   const host = request.headers.host;
   const boundPort = server.address().port;
   if (host !== `127.0.0.1:${boundPort}` && host !== `localhost:${boundPort}`) {
@@ -85,6 +95,9 @@ const server = createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && request.url === '/') return show(response, 200, await projects());
     if (request.method === 'GET' && request.url === '/style.css') return send(response, 200, css, 'text/css; charset=utf-8');
+    if (request.method === 'GET' && request.url === '/brand.css') return send(response, 200, brand.styles, 'text/css; charset=utf-8');
+    const asset = request.method === 'GET' && brand.assets.get(request.url);
+    if (asset) return send(response, 200, asset.body, asset.type);
     if (request.method !== 'POST' || request.url !== '/select') return send(response, 404, 'Not found.');
     if (request.headers.origin !== `http://${host}`) return send(response, 403, 'Open the selector on localhost.');
     if (request.headers['content-type']?.split(';')[0] !== 'application/x-www-form-urlencoded') {

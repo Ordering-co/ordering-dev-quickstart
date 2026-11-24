@@ -51,6 +51,10 @@ test('the local selector lists and switches the same projects as the CLI', async
   const html = await page.text();
   assert.match(html, /first-project[\s\S]*Active[\s\S]*second-project/);
   assert.ok(!html.includes(key));
+  assert.match(html, /ordering-lockup-color\.svg" alt="Ordering\.co"/);
+  assert.match(await (await fetch(address + '/brand.css')).text(), /--od-focus-ring-width: 2px/);
+  assert.equal((await fetch(address + '/brand/InterVariable.woff2')).headers.get('content-type'), 'font/woff2');
+  assert.equal((await fetch(address + '/brand/release-lock.json')).status, 404);
 
   const select = (project, origin = address) => fetch(address + '/select', {
     method: 'POST',

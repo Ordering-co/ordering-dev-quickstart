@@ -33,6 +33,8 @@ Each Quickstart checkout has its own project selector. The existing connection i
 
 The selection applies to new Quickstart commands, including `api`, `doctor`, Google Maps commands and the MCP launcher. Running MCP processes keep the project they started with. Reload clients using that launcher and run `whoami` before accessing data. A client configured directly with an MCP URL keeps its own project. The selector also leaves product checkouts, SDK settings and standalone HTTP request examples as configured.
 
+The web selector ships the [released Ordering.co Guidelines](https://brand.ordering.co/product/) tokens, logo masters and fonts in a local bundle. It loads assets offline. Use `node scripts/projects-web/brand.mjs --check` to verify the lock, `--freshness` to compare the published release, and `--sync` to restore the pinned assets from the release origin.
+
 Keeping **Read** scope and clearing **Also give my agent the REST API** in the browser gives the new project an MCP-only connection. REST commands require a REST key saved under the selected project.
 
 ## Rotating or disconnecting
