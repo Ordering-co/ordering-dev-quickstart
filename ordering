@@ -5,6 +5,7 @@
 #                                (agents: "login start" then "login wait"; relay its TELL THE
 #                                USER block verbatim; "login code" re-shows the current code)
 #   ./ordering init [SERVER_URL] Create .env, set your project from the Server URL, open the file
+#   ./ordering projects           List, add or select local Ordering connections
 #   ./ordering doctor            Check your project, MCP key and API key
 #   ./ordering install           Register and verify Ordering in detected MCP clients globally
 #   ./ordering prepare           Prepare the locked launcher without global registration
@@ -69,6 +70,9 @@ die()   { printf '%serror:%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
 # Reads ORDERING_* variables from .env without executing it.
 # Values in .env win over your shell, so a key you just replaced in .env is
 # used right away. Variables missing from .env fall back to your shell.
+PROJECTS_DIR="$ROOT/.ordering-projects"
+ACTIVE_PROJECT="$PROJECTS_DIR/active"
+PROFILE_PROJECT=""
 ENV_FILE="$ROOT/.env"
 ENV_SOURCES=""
 load_env() {
@@ -386,6 +390,7 @@ set_env_line() {
 }
 
 cmd_init() {
+  [ -z "$PROFILE_PROJECT" ] || die "Use ./ordering login to reconnect '$PROFILE_PROJECT'. For manual setup, select the legacy connection with ./ordering projects use --legacy."
   local input="${1:-}" project
   if [ ! -f "$ENV_FILE" ]; then
     cp "$ROOT/.env.example" "$ENV_FILE"
@@ -613,6 +618,10 @@ cmd_login_wait() {
   [[ "$project" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Received an invalid project. Nothing was saved.$api_hint Run ./ordering login again."
   [[ "$key" =~ ^ord_mcp_[A-Za-z0-9_-]+$ ]] || die "Received an invalid key. Nothing was saved.$api_hint Run ./ordering login again."
 
+  if [ -n "$PROFILE_PROJECT" ] && [ "$project" != "$PROFILE_PROJECT" ]; then
+    die "The browser returned '$project' but this sign-in is for '$PROFILE_PROJECT'. Nothing was saved.$api_hint Select '$PROFILE_PROJECT' in the browser and try again."
+  fi
+
   if [ -n "$payload2" ]; then
     api_version="$(json_get "$payload2" v)"; pid2="$(json_get "$payload2" i)"
     api_key="$(json_get "$payload2" a)"; payload2=""
@@ -625,7 +634,8 @@ cmd_login_wait() {
   # Accept the MCP key only if it is the one created for this sign-in: its name ends with our id.
   mcp_whoami "$project" "$key"
   key_name="$(json_get "$MCP_BODY" result.structuredContent.token.name)"
-  if [ "$HTTP_CODE" != "200" ] || [ "${key_name: -8}" != "${id:0:8}" ]; then
+  if [ "$HTTP_CODE" != "200" ] || [ "${key_name: -8}" != "${id:0:8}" ] ||
+    [ "$(json_get "$MCP_BODY" result.structuredContent.project)" != "$project" ]; then
     key=""
     die "The received key could not be verified as yours (HTTP $HTTP_CODE). Nothing was saved.$api_hint If you didn't start this sign-in, revoke unknown keys in the Dashboard."
   fi
@@ -643,18 +653,15 @@ cmd_login_wait() {
     fi
   fi
 
-  [ -f "$ENV_FILE" ] || cp "$ROOT/.env.example" "$ENV_FILE"
-  chmod 600 "$ENV_FILE"
-  set_env_line ORDERING_PROJECT "$project"
-  set_env_line ORDERING_MCP_KEY "$key"
-  export ORDERING_PROJECT="$project" ORDERING_MCP_KEY="$key"
+  local saved_api_key="$api_key"
+  if [ -z "$saved_api_key" ] && [ "$old_project" = "$project" ]; then saved_api_key="$old_api_key"; fi
+  save_credentials replace "$project" "$key" "$saved_api_key"
+  load_env
   ok "Signed in as $(json_get "$MCP_BODY" result.structuredContent.user.name) ($(json_get "$MCP_BODY" result.structuredContent.user.role)) on project '$project'. Check that this is you and your project."
   ok "Key \"$key_name\" saved to .env"
   hint "To revoke it later: Dashboard > MCP settings, key \"$key_name\"."
 
   if [ -n "$api_key" ]; then
-    set_env_line ORDERING_API_KEY "$api_key"
-    export ORDERING_API_KEY="$api_key"
     ok "REST API connected"
     warn "This key has full access with your permissions and does not expire."
     hint "To revoke it: Dashboard > Settings > Developers > API Keys."
@@ -663,13 +670,11 @@ cmd_login_wait() {
     if [ "$old_project" = "$project" ]; then
       warn "Your existing REST API key for this project was kept. This sign-in did not include a new one."
     else
-      set_env_line ORDERING_API_KEY ""
-      export ORDERING_API_KEY=""
       warn "Cleared the REST API key left over from project \"$old_project\". This sign-in did not include a new one for '$project'."
     fi
   fi
 
-  if [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
+  if [ -z "$PROFILE_PROJECT" ] && [ -z "${ORDERING_LOGIN_SKIP_PLUGIN:-}" ] && have claude && claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
     local plugin_options
     plugin_options="$(claude plugin configure "$PLUGIN_ID" --json 2>/dev/null || true)"
     if [ "$(json_get "$plugin_options" schema.mcp_key.type)" = "string" ]; then
@@ -724,6 +729,7 @@ cmd_login() {
     esac
     shift
   done
+  [[ "$timeout" =~ ^[1-9][0-9]{0,2}$ || -z "$timeout" ]] || die "--timeout must be between 1 and 999 seconds."
   case "$sub" in
     start)
       cmd_login_start "$(login_client "$client_arg")"
@@ -925,9 +931,11 @@ cmd_logout() {
     fi
   fi
 
-  title "Shell and agents"
-  cmd_uninstall
-  if have claude && [ "$(claude_plugin_state)" = "installed" ]; then
+  if [ -z "$PROFILE_PROJECT" ] && [ ! -d "$PROJECTS_DIR" ]; then
+    title "Shell and agents"
+    cmd_uninstall
+  fi
+  if [ -z "$PROFILE_PROJECT" ] && [ ! -d "$PROJECTS_DIR" ] && have claude && [ "$(claude_plugin_state)" = "installed" ]; then
     if claude_plugin_can_uninstall; then
       if claude plugin uninstall "$PLUGIN_ID" >/dev/null 2>&1; then
         ok "Claude Code: Ordering plugin uninstalled"
@@ -943,13 +951,10 @@ cmd_logout() {
   title "Key"
   local had_api_key=""
   if [ -f "$ENV_FILE" ]; then
-    set_env_line ORDERING_MCP_KEY ""
-    ok "Removed the MCP key from .env (your project stays set)"
-    if [ -n "${ORDERING_API_KEY:-}" ]; then
-      had_api_key=1
-      set_env_line ORDERING_API_KEY ""
-      ok "Removed the REST API key from .env"
-    fi
+    [ -z "${ORDERING_API_KEY:-}" ] || had_api_key=1
+    save_credentials replace "${ORDERING_PROJECT:-}" "" ""
+    ok "Removed the MCP key from the current project (your project stays set)"
+    [ -z "$had_api_key" ] || ok "Removed the REST API key from the current project"
   else
     ok "No .env here."
   fi
@@ -1383,16 +1388,191 @@ cmd_google_maps() {
   hint "Manage the key and its usage: https://console.cloud.google.com/google/maps-apis/credentials?project=$gcp"
 }
 
+# ---------------------------------------------------------------- local projects
+
+valid_project() { [[ "$1" =~ ^[a-z0-9_-]+$ ]]; }
+
+# Stage all credential changes together so a launcher sees one complete connection.
+save_credentials() (
+  local mode="$1" destination="$ENV_FILE" staged
+  shift
+  staged="$(mktemp "$destination.XXXXXX")"
+  trap 'rm -f "$staged"' EXIT
+  if [ -f "$destination" ]; then cp "$destination" "$staged"; else cp "$ROOT/.env.example" "$staged"; fi
+  ENV_FILE="$staged"
+  set_env_line ORDERING_PROJECT "$1"
+  set_env_line ORDERING_MCP_KEY "$2"
+  set_env_line ORDERING_API_KEY "$3"
+  [ "$#" -lt 4 ] || set_env_line ORDERING_LANG "$4"
+  if [ "$mode" = create ]; then
+    ln "$staged" "$destination" 2>/dev/null || die "Could not create the profile. Existing credentials were preserved."
+  else
+    mv -f "$staged" "$destination"
+  fi
+)
+
+clear_project_env() {
+  unset ORDERING_PROJECT ORDERING_MCP_KEY ORDERING_API_KEY ORDERING_LANG ORDERING_TEST_EMAIL ORDERING_TEST_PASSWORD
+  ENV_SOURCES=""
+}
+
+profile_context() {
+  local directory="$PROJECTS_DIR/$1"
+  valid_project "$1" || die "Use a project ID with lowercase letters, numbers, hyphens or underscores."
+  [ ! -L "$PROJECTS_DIR" ] && [ ! -L "$directory" ] || die "Project storage must be a local directory."
+  PROFILE_PROJECT="$1"
+  ENV_FILE="$directory/.env"
+  LOGIN_DIR="$directory/.login"
+  AUDIT_LOG="$directory/.api-audit.log"
+  MAPS_BACKUP="$directory/.google-maps-previous-key"
+  clear_project_env
+  load_env
+  if [ -f "$ENV_FILE" ] && [ "${ORDERING_PROJECT:-}" != "$PROFILE_PROJECT" ]; then
+    die "Saved credentials do not match project '$PROFILE_PROJECT'."
+  fi
+}
+
+saved_project() (
+  ENV_FILE="$1"
+  clear_project_env
+  load_env
+  valid_project "${ORDERING_PROJECT:-}" || return 1
+  [ -n "${ORDERING_MCP_KEY:-}${ORDERING_API_KEY:-}" ] || return 1
+  printf '%s\n' "$ORDERING_PROJECT"
+)
+
+active_project() {
+  [ ! -e "$ACTIVE_PROJECT" ] || cat "$ACTIVE_PROJECT"
+}
+
+list_projects() {
+  local active legacy file project label
+  active="$(active_project)"
+  legacy="$(saved_project "$ROOT/.env" || true)"
+  if [ -n "$legacy" ]; then
+    label="legacy"
+    [ -n "$active" ] || label="legacy, active"
+    printf '%s (%s)\n' "$legacy" "$label"
+  fi
+  for file in "$PROJECTS_DIR"/*/.env; do
+    [ -f "$file" ] || continue
+    project="${file%/.env}"; project="${project##*/}"
+    [ "$(saved_project "$file" || true)" = "$project" ] || continue
+    if [ "$project" = "$active" ]; then printf '%s (active)\n' "$project"; else printf '%s\n' "$project"; fi
+  done
+}
+
+select_project() {
+  local project="$1" temporary
+  if [ "$project" = --legacy ] || {
+    valid_project "$project" && [ "$project" = "$(saved_project "$ROOT/.env" || true)" ];
+  }; then
+    rm -f "$ACTIVE_PROJECT"
+    ok "Using the legacy connection in this checkout."
+  else
+    valid_project "$project" || die "Invalid project ID."
+    profile_context "$project"
+    [ -n "${ORDERING_MCP_KEY:-}${ORDERING_API_KEY:-}" ] || die "No credentials saved for '$project'. Run ./ordering projects add $project."
+    temporary="$(mktemp "$PROJECTS_DIR/active.XXXXXX")"
+    printf '%s\n' "$project" > "$temporary"
+    mv -f "$temporary" "$ACTIVE_PROJECT"
+    ok "Using project '$project' in this checkout."
+  fi
+  hint "Reload connected MCP clients and run whoami to confirm the project in each client."
+}
+
+import_legacy_project() {
+  local directory project key api_key language
+  directory="$(cd -- "$1" && pwd -P)" || die "Quickstart checkout not found."
+  [ "$directory" != "$ROOT" ] || die "This checkout already includes its legacy connection."
+  [ -x "$directory/ordering" ] && [ -f "$directory/.env" ] || die "Expected a Quickstart checkout with an existing .env."
+  ENV_FILE="$directory/.env"
+  clear_project_env
+  load_env
+  project="${ORDERING_PROJECT:-}"
+  key="${ORDERING_MCP_KEY:-}"
+  api_key="${ORDERING_API_KEY:-}"
+  language="$(lang)"
+  valid_project "$project" && [ -n "$key" ] || die "The source has no saved MCP connection."
+  [ "$project" != "$(saved_project "$ROOT/.env" || true)" ] || die "This checkout already has a legacy connection for '$project'."
+  profile_context "$project"
+  [ ! -e "$ENV_FILE" ] || die "A local profile for '$project' already exists."
+  mcp_whoami "$project" "$key"
+  [ "$HTTP_CODE" = 200 ] && [ "$(json_get "$MCP_BODY" result.structuredContent.project)" = "$project" ] ||
+    die "The source MCP key could not be verified on '$project'. Sign in with ./ordering projects add $project."
+  if [ -n "$api_key" ]; then
+    api_users_me "$project" "$api_key"
+    [ "$HTTP_CODE" = 200 ] && [ "$(json_get "$API_BODY" error)" = false ] ||
+      die "The source REST API key could not be verified on '$project'. Sign in with ./ordering projects add $project."
+  fi
+  mkdir -p "$PROJECTS_DIR/$project"
+  save_credentials create "$project" "$key" "$api_key" "$language"
+  ok "Imported the verified connection for '$project'."
+  hint "Select it with ./ordering projects use $project."
+}
+
+cmd_projects() {
+  local action="${1:-list}" project output option
+  [ "$#" -eq 0 ] || shift
+  case "$action" in
+    list)
+      [ "$#" -eq 0 ] || die "Usage: ./ordering projects list"
+      output="$(list_projects)"
+      if [ -n "$output" ]; then printf '%s\n' "$output"; else hint "No saved projects. Run ./ordering projects add PROJECT."; fi
+      ;;
+    use)
+      [ "$#" -le 1 ] || die "Usage: ./ordering projects use [PROJECT|--legacy]"
+      project="${1:-}"
+      if [ -z "$project" ]; then
+        [ -t 0 ] || die "Specify a project ID: ./ordering projects use PROJECT."
+        output="$(list_projects)"
+        [ -n "$output" ] || die "No saved projects. Run ./ordering projects add PROJECT."
+        printf '%s\n' "$output"
+        read -r -p "Project ID: " project
+      fi
+      select_project "$project"
+      ;;
+    import)
+      [ "$#" -eq 1 ] || die "Usage: ./ordering projects import QUICKSTART_DIRECTORY"
+      import_legacy_project "$1"
+      ;;
+    add)
+      [ "$#" -gt 0 ] || die "Usage: ./ordering projects add PROJECT [start|wait|code]"
+      project="$1"; shift
+      for option in "$@"; do
+        [ "$option" != --install ] || die "Select the project before running ./ordering install."
+      done
+      valid_project "$project" || die "Invalid project ID."
+      [ "$project" != "$(saved_project "$ROOT/.env" || true)" ] || die "The legacy connection already uses '$project'. Select it and run ./ordering login to renew it."
+      profile_context "$project"
+      case "${1:-}" in wait|code) ;; *) mkdir -p "$PROJECTS_DIR/$project" ;; esac
+      hint "This sign-in is for '$project'. Select that project in the browser."
+      cmd_login "$@"
+      ;;
+    *) die "Usage: ./ordering projects [list|add PROJECT|import QUICKSTART_DIRECTORY|use [PROJECT|--legacy]]" ;;
+  esac
+}
+
 # ---------------------------------------------------------------- main
 
 usage() {
-  sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   echo
   echo "Docs: $DOCS_URL"
 }
 
-load_env
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
+if [ "$cmd" = projects ]; then
+  cmd_projects "$@"
+  exit
+fi
+active="$(active_project)"
+if [ -n "$active" ]; then
+  profile_context "$active"
+  [ -f "$ENV_FILE" ] || die "The selected project is missing. Run ./ordering projects use to select another one."
+else
+  load_env
+fi
 case "$cmd" in
   login)         cmd_login "$@" ;;
   init)          cmd_init "$@" ;;

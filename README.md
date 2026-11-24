@@ -42,6 +42,17 @@ This quickstart and the optional plugin are public under the Ordering-co organiz
 
 &nbsp;
 
+## Connect another project
+
+```bash
+./ordering projects add PROJECT
+./ordering projects list
+./ordering projects use PROJECT
+./ordering doctor
+```
+
+Choose the requested project in the browser. Adding a connection keeps the current selection. Run `./ordering projects use` for an interactive selector, or pass the project ID directly. Reload any MCP client using this checkout's launcher and ask “Who am I in Ordering?” before running project operations. See [multiple local projects](docs/credentials.md#multiple-local-projects).
+
 ## 4 · Optional · Get all seven Ordering products
 
 After verifying your connection, your agent offers to download the seven public products into `~/ordering-products`. If you accept, it configures **all seven** for your confirmed project and asks once for a franchise if needed.
