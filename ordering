@@ -1602,8 +1602,9 @@ if [ "$cmd" = projects ]; then
   exit
 fi
 if [ "$cmd" = mcp ] && [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = --project ] && valid_project "$2" ||
+  if [ "$#" -ne 2 ] || [ "$1" != --project ] || ! valid_project "$2"; then
     die "Usage: ./ordering mcp [--project PROJECT]"
+  fi
   if [ "$2" = "$(saved_project "$ROOT/.env" || true)" ]; then
     clear_project_env
     load_env
