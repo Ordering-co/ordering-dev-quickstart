@@ -390,8 +390,11 @@ check "shared directory and profiles are private" '[ "$(perms "$shared")" = 700 
 HOME="$WORK/global-home" "$WORK/pilot/ordering" --global projects use second-project > /dev/null
 HOME="$WORK/global-home" "$WORK/repo/ordering" --global doctor > "$WORK/global.out"
 check "the shared selection works in another checkout" 'grep -q "Project .second-project. found" "$WORK/global.out" && grep -q "Connected as" "$WORK/global.out"'
-HOME="$WORK/global-home" "$WORK/pilot/ordering" --global --project orderingtest doctor > "$WORK/pinned.out"
-check "an explicit shared project overrides the default for that command" 'grep -q "Project .orderingtest. found" "$WORK/pinned.out" && grep -q "Connected as" "$WORK/pinned.out"'
+HOME="$WORK/global-home" "$WORK/pilot/ordering" --global projects use orderingtest > /dev/null
+HOME="$WORK/global-home" "$WORK/pilot/ordering" --global --project second-project doctor > "$WORK/pinned.out"
+check "an explicit shared project overrides the default for that command" 'grep -q "Project .second-project. found" "$WORK/pinned.out" && grep -q "Connected as" "$WORK/pinned.out"'
+HOME="$WORK/global-home" "$WORK/pilot/ordering" --global projects list > "$WORK/shared-default.out"
+check "pinning one command leaves the global default in place" 'grep -q "orderingtest.*active" "$WORK/shared-default.out"'
 HOME="$WORK/global-home" "$WORK/repo/ordering" projects list > "$WORK/local.out"
 check "the shared default does not change the local selection" 'grep -q "orderingtest.*active" "$WORK/local.out"'
 rc=0; HOME="$WORK/global-home" "$WORK/repo/ordering" projects share orderingtest > /dev/null 2>&1 || rc=$?

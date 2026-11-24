@@ -9,10 +9,18 @@ import { assertConversationAvailable, CodexSwitchError, configureCodex } from '.
 import { startProjectsWeb } from './projects-web/server.mjs';
 
 const quickstart = await realpath(fileURLToPath(new URL('../', import.meta.url)));
+const run = promisify(execFile);
 const [project, requestedDirectory, ...options] = process.argv.slice(2);
 const global = options[0] === '--global';
 const separator = global ? 1 : 0;
 const args = options.slice(separator + 1);
+
+function openSelector(url) {
+  if (!process.stdout.isTTY || process.env.ORDERING_NO_BROWSER || process.env.SSH_CONNECTION) return;
+  const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+  if (opener === 'xdg-open' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return;
+  void run(opener, [url], { timeout: 5000 }).catch(() => {});
+}
 
 async function conversationDirectory() {
   if (requestedDirectory) return realpath(requestedDirectory);
@@ -51,12 +59,13 @@ try {
   let chat;
   const stop = () => chat?.kill();
   try {
-    await promisify(execFile)('codex', ['app-server', 'daemon', 'start'], { cwd: directory, timeout: 15000 });
+    await run('codex', ['app-server', 'daemon', 'start'], { cwd: directory, timeout: 15000 });
     const hideDefault = await assertConversationAvailable(directory, quickstart);
     await configureCodex(directory, project, hideDefault, { quickstart, global, conversation: true });
     selector = await startProjectsWeb({ port: 0, directory, global });
     console.log(`Project selector for this conversation: ${selector.url}`);
     console.log(`Conversation directory: ${directory}`);
+    openSelector(selector.url);
     chat = spawn('codex', ['--remote', 'unix://', '-C', directory, ...args], { cwd: directory, stdio: 'inherit' });
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);

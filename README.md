@@ -62,7 +62,7 @@ Open two independent Codex conversations in separate terminals:
 ./ordering --global codex --live --project SECOND_PROJECT
 ```
 
-Each command prints a localhost URL for its own conversation. Allow the project's configuration if Codex asks. Open that URL and switch while the chat is idle. Quickstart confirms the project with `whoami` in that chat. Use `--cwd DIRECTORY` to work in a specific directory, with one managed chat per directory. Without it, Quickstart creates a private working directory for each conversation.
+Each command opens that conversation's localhost selector in a local desktop session and prints its URL. Allow the project's configuration if Codex asks. Switch while the chat is idle. Quickstart confirms the project with `whoami` in that chat. Use `--cwd DIRECTORY` to work in a specific directory, with one managed chat per directory. Without it, Quickstart creates a private working directory for each conversation.
 
 For other MCP clients, use `./ordering --global projects use PROJECT` and `./ordering --global install` to register the shared default for new connections. See [multiple local projects](docs/credentials.md#multiple-local-projects).
 

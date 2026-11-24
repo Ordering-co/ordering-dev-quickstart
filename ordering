@@ -38,10 +38,9 @@ set -euo pipefail
 umask 077   # every file this script writes (.env, temporary keys) is private
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_PROJECTS_DIR="$ROOT/.ordering-projects"
-GLOBAL_PROJECTS_DIR="${HOME:?}/.config/ordering-quickstart/projects"
 GLOBAL_MODE=""
 if [ "${1:-}" = --global ]; then
+  : "${HOME:?Set HOME before using the global project store}"
   GLOBAL_MODE=--global
   shift
 fi
@@ -99,7 +98,8 @@ die()   { printf '%serror:%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
 # Reads ORDERING_* variables from .env without executing it.
 # Values in .env win over your shell, so a key you just replaced in .env is
 # used right away. Variables missing from .env fall back to your shell.
-PROJECTS_DIR="$LOCAL_PROJECTS_DIR"
+GLOBAL_PROJECTS_DIR="${HOME:-}/.config/ordering-quickstart/projects"
+PROJECTS_DIR="$ROOT/.ordering-projects"
 [ -z "$GLOBAL_MODE" ] || PROJECTS_DIR="$GLOBAL_PROJECTS_DIR"
 ACTIVE_PROJECT="$PROJECTS_DIR/active"
 PROFILE_PROJECT=""
@@ -1626,7 +1626,7 @@ select_project() {
   hint "Reload connected MCP clients and run whoami to confirm the project in each client."
 }
 
-import_profile() (
+import_profile() {
   local project key api_key language
   ENV_FILE="$1"
   clear_project_env
@@ -1651,7 +1651,7 @@ import_profile() (
   save_credentials create "$project" "$key" "$api_key" "$language"
   ok "Imported the verified connection for '$project'."
   hint "Select it with ./ordering ${GLOBAL_MODE:+$GLOBAL_MODE }projects use $project."
-)
+}
 
 import_legacy_project() {
   local directory
@@ -1663,6 +1663,7 @@ import_legacy_project() {
 share_project() {
   local project="$1"
   [ -z "$GLOBAL_MODE" ] || die "Run ./ordering projects share PROJECT from the checkout that saved it."
+  [ -n "${HOME:-}" ] || die "Set HOME before using the global project store."
   load_project "$project"
   local source="$ENV_FILE"
   GLOBAL_MODE=--global
