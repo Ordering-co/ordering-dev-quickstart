@@ -25,7 +25,7 @@ All folders below are siblings inside the chosen destination. New recursive clon
 | --- | --- | --- | --- | --- |
 | Dashboard | [Ordering-co/ordering-dashboard](https://github.com/Ordering-co/ordering-dashboard) | `ordering-dashboard` | No | `setup.md` |
 | Ordering Website | [Ordering-co/ordering-website-customer](https://github.com/Ordering-co/ordering-website-customer) | `ordering-website-customer` | Yes | `setup.md` |
-| Customer App | [Ordering-co/ordering-app-marketplace](https://github.com/Ordering-co/ordering-app-marketplace) | `ordering-app-marketplace` | Yes | `setup.md` |
+| Customer App | [Ordering-co/ordering-app-customer](https://github.com/Ordering-co/ordering-app-customer) | `ordering-app-customer` | Yes | `setup.md` |
 | Business App | [Ordering-co/ordering-app-business](https://github.com/Ordering-co/ordering-app-business) | `ordering-app-business` | Yes | `docs/onboarding.md` |
 | Driver App | [Ordering-co/ordering-app-driver](https://github.com/Ordering-co/ordering-app-driver) | `ordering-app-driver` | Yes | `docs/onboarding.md` |
 | Franchise Website | [Ordering-co/ordering-website-franchises](https://github.com/Ordering-co/ordering-website-franchises) | `ordering-website-franchises` | Yes | `setup.md` |
