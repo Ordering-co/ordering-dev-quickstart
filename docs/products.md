@@ -15,7 +15,7 @@ An agent offers once, after connection verification: “Would you also like me t
 
 Acceptance means clone and configure **all seven**, with the confirmed project. If a franchise selection is missing or ambiguous, ask once for an enabled franchise the person explicitly chooses for **both** franchise products. Reuse earlier validated choices; never pick the first franchise or business. Do not ask which product to configure first.
 
-After configuration, ask which products the person wants to run locally. Recommend **Website Marketplace + Dashboard together**. Only those chosen products proceed to dependency installation, a server or native build/launch, and a visible edit. Preserve other running sessions. Do not install all seven products' dependencies or launch everything during configuration.
+After configuration, ask which products the person wants to run locally. Recommend **Ordering Website + Dashboard together**. Only those chosen products proceed to dependency installation, a server or native build/launch, and a visible edit. Preserve other running sessions. Do not install all seven products' dependencies or launch everything during configuration.
 
 ## Public catalogue
 
@@ -24,7 +24,7 @@ All folders below are siblings inside the chosen destination. New recursive clon
 | Product | Public repository | Folder | Pinned submodules | Runbook in that checkout |
 | --- | --- | --- | --- | --- |
 | Dashboard | [Ordering-co/ordering-dashboard](https://github.com/Ordering-co/ordering-dashboard) | `ordering-dashboard` | No | `setup.md` |
-| Website Marketplace | [Ordering-co/website-marketplace](https://github.com/Ordering-co/website-marketplace) | `website-marketplace` | Yes | `setup.md` |
+| Ordering Website | [Ordering-co/ordering-website-customer](https://github.com/Ordering-co/ordering-website-customer) | `ordering-website-customer` | Yes | `setup.md` |
 | Customer App | [Ordering-co/ordering-app-marketplace](https://github.com/Ordering-co/ordering-app-marketplace) | `ordering-app-marketplace` | Yes | `setup.md` |
 | Business App | [Ordering-co/ordering-app-business](https://github.com/Ordering-co/ordering-app-business) | `ordering-app-business` | Yes | `docs/onboarding.md` |
 | Driver App | [Ordering-co/ordering-app-driver](https://github.com/Ordering-co/ordering-app-driver) | `ordering-app-driver` | Yes | `docs/onboarding.md` |
@@ -58,7 +58,7 @@ A missing franchise is reported as a partial configuration until an explicit cho
 
 Both commands require explicit `--all` and `--directory`; the helper does not ask terminal questions, including without a TTY. The agent supplies the human dialogue. Exit 0 means all seven selected operations succeeded; exit 1 reports a partial failure/conflict, and exit 2 indicates invalid/missing command arguments. Inspect each product's `status`, `directory` and `errorCode` in the JSON summary before reporting success. A clone summary is not a configuration summary. Clone statuses are `cloned`, `existing`, `conflict` or `failed`; configure statuses are `configured`, `unchanged`, `conflict` or `failed`. A reported conflict is not a completed operation.
 
-`configure` delegates to each checkout's existing public helper. Website Marketplace uses `scripts/marketplace/cli.mjs configure --public-project`; the other six use `scripts/onboarding/cli.mjs configure --project`. Existing product configuration and unknown fields remain owned by that product's helper. Nothing copies one product's configuration into another. Public GET validation checks resolution, not ownership, permissions or a normal app session.
+`configure` delegates to each checkout's existing public helper. Ordering Website uses `scripts/marketplace/cli.mjs configure --public-project`; the other six use `scripts/onboarding/cli.mjs configure --project`. Existing product configuration and unknown fields remain owned by that product's helper. Nothing copies one product's configuration into another. Public GET validation checks resolution, not ownership, permissions or a normal app session.
 
 ### Changing a destination deliberately
 
@@ -83,7 +83,7 @@ Report counts honestly, for example “7 cloned, 5 configured, 0 running; two fr
 
 ## Start only the selected products
 
-Once the seven are configured (or after clearly reporting any partial result), ask for the launch selection. Recommend Website Marketplace + Dashboard; the developer can choose another combination. Follow the runbooks in the catalogue rather than guessing commands or using one runtime for every product.
+Once the seven are configured (or after clearly reporting any partial result), ask for the launch selection. Recommend Ordering Website + Dashboard; the developer can choose another combination. Follow the runbooks in the catalogue rather than guessing commands or using one runtime for every product.
 
 Bulk clone/configure uses Node.js 22+ without app dependencies. Web doctor/start/build commands require their pinned Node 24/pnpm toolchain. Native apps use their own Node/Yarn, Xcode/Ruby/Pods or Android toolchain and native-service requirements. The explicit iOS Simulator preview without Firebase is an optional product-specific path; it is not a production/provider verification. Do not use another project's Firebase files, signing material or service keys. Configuration success on any platform does not prove a native build.
 
