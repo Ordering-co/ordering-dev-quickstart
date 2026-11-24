@@ -24,10 +24,11 @@ check() { if eval "$2"; then echo "ok   - $1"; pass=$((pass+1)); else echo "FAIL
 
 fresh() {  # a clean copy of the repo, without .env or .login
   rm -rf "$WORK/repo"; mkdir -p "$WORK/repo"
-  (cd "$REPO" && tar --exclude .git --exclude .env --exclude .login --exclude .clients --exclude node_modules --exclude spec -cf - .) | (cd "$WORK/repo" && tar -xf -)
+  (cd "$REPO" && tar --exclude .git --exclude .env --exclude .login --exclude .ordering-projects --exclude .clients --exclude node_modules --exclude spec -cf - .) | (cd "$WORK/repo" && tar -xf -)
 }
 start() {  # sets LINK and CODE
-  "$WORK/repo/ordering" login start --client claude > "$WORK/start.out" 2>&1
+  [ "$#" -gt 0 ] || set -- login start
+  "$WORK/repo/ordering" "$@" --client claude > "$WORK/start.out" 2>&1
   LINK="$(grep -o 'http://[^ ]*/connect/#[0-9a-f.]*' "$WORK/start.out")"
   CODE="$(sed -n 's/.*type this code: \([0-9A-F-]*\).*/\1/p' "$WORK/start.out" | tr -d '\033' | sed 's/\[[0-9;]*m//g')"
 }
@@ -340,6 +341,44 @@ check "MCP refuses to launch with a cleared local key despite a shell key" '[ "$
 rc=0
 ORDERING_API_KEY="$API_TEST_KEY" "$WORK/repo/ordering" api GET /orders > "$WORK/cleared-api.out" 2>&1 || rc=$?
 check "REST API refuses a cleared local key despite a shell key" '[ "$rc" != 0 ] && grep -q "ORDERING_API_KEY is empty" "$WORK/cleared-api.out"'
+
+echo "# isolated local projects"
+fresh; start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" orderingtest "$KEY" with-api-key > /dev/null
+"$WORK/repo/ordering" login wait --timeout 20 > /dev/null
+cp "$WORK/repo/.env" "$WORK/legacy.env"
+start projects add second-project start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" wrong-project "${KEY}wrong" > /dev/null
+rc=0; "$WORK/repo/ordering" projects add second-project wait --timeout 20 > "$WORK/wrong.out" 2>&1 || rc=$?
+check "rejects authentication for a different project" '[ "$rc" != 0 ] && grep -q "wrong-project.*second-project" "$WORK/wrong.out"'
+check "failed pairing leaves the existing connection untouched" 'cmp -s "$WORK/repo/.env" "$WORK/legacy.env"'
+start projects add second-project start
+node "$REPO/tests/page_sim.mjs" "$CONNECT" "$LINK" "$CODE" second-project "${KEY}second" > /dev/null
+"$WORK/repo/ordering" projects add second-project wait --timeout 20 > "$WORK/add.out"
+"$WORK/repo/ordering" projects list > "$WORK/projects.out"
+check "lists legacy and new project with legacy still active" 'grep -q "orderingtest.*active" "$WORK/projects.out" && grep -q "second-project" "$WORK/projects.out"'
+check "adding a project does not replace the legacy file" 'cmp -s "$WORK/repo/.env" "$WORK/legacy.env"'
+check "project key file is private and neither key is printed" '[ "$(perms "$WORK/repo/.ordering-projects/second-project/.env")" = 600 ] && ! grep -q "$KEY" "$WORK/projects.out" "$WORK/add.out"'
+"$WORK/repo/ordering" projects use second-project > /dev/null
+ORDERING_PROJECT=wrong-project ORDERING_MCP_KEY="$KEY" "$WORK/repo/ordering" doctor > "$WORK/project.out"
+check "doctor connects to the selected project with its own key" 'grep -q "Project .second-project. found" "$WORK/project.out" && grep -q "Connected as" "$WORK/project.out"'
+rc=0
+ORDERING_API_KEY="$(openssl rand -hex 32)" "$WORK/repo/ordering" api GET /orders > "$WORK/project-api.out" 2>&1 || rc=$?
+check "selected MCP-only project never inherits a REST key" '[ "$rc" != 0 ] && grep -q "ORDERING_API_KEY is empty" "$WORK/project-api.out"'
+"$WORK/repo/ordering" projects use orderingtest > /dev/null
+"$WORK/repo/ordering" projects list > "$WORK/legacy.out"
+check "can switch back to the original connection by its project ID" 'grep -q "orderingtest.*active" "$WORK/legacy.out"'
+rc=0; "$WORK/repo/ordering" projects use ../second-project > /dev/null 2>&1 || rc=$?
+check "invalid project IDs cannot select a directory" '[ "$rc" != 0 ]'
+
+echo "# import a verified connection from a separate installation"
+mkdir -p "$WORK/pilot"
+cp "$WORK/repo/ordering" "$WORK/repo/.env.example" "$WORK/pilot/"
+"$WORK/pilot/ordering" projects import "$WORK/repo" > "$WORK/import.out"
+check "import preserves existing credentials and prints no key" 'cmp -s "$WORK/repo/.env" "$WORK/legacy.env" && ! grep -q "$KEY" "$WORK/import.out"'
+check "import can select the saved legacy project" '"$WORK/pilot/ordering" projects use orderingtest'
+rc=0; "$WORK/pilot/ordering" projects import "$WORK/repo" > /dev/null 2>&1 || rc=$?
+check "import cannot overwrite existing profiles" '[ "$rc" != 0 ]'
 
 echo "# relay validation"
 reg() { curl -s -o /dev/null -w '%{http_code}' -X POST "$CONNECT/connect/api/pairings" -H 'Content-Type: application/json' -d "$1"; }

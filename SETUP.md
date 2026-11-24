@@ -7,7 +7,7 @@ A developer asked you to connect them to the Ordering.co MCP. Follow these steps
 - **Never ask for the MCP key in the chat, and never print or read `.env`.** The key reaches the terminal encrypted, through `./ordering login`. If the developer pastes a key in the chat anyway, tell them to revoke it in the Dashboard and run the login again, because the transcript now contains it.
 - The sign-in link and the code are for the developer only. Show them once and never post them anywhere else.
 - Use `./ordering` for every change to `.env`. Never edit `.env` with your own tools.
-- Never commit `.env` or `.login/`.
+- Never commit `.env`, `.login/` or `.ordering-projects/`. Keep every project’s credentials private.
 
 ## 0. Check where you are running
 
@@ -38,6 +38,8 @@ A dirty, divergent or custom-branch checkout stays untouched. Explain the specif
 Your shell's working folder may reset between commands. **Start every command with `cd ~/ordering-dev-quickstart &&`.**
 
 ## 2. Sign in
+
+If the developer wants to add a different project, run `./ordering projects list` first. Use `./ordering projects add PROJECT start --client codex` followed by `./ordering projects add PROJECT wait`, substituting the project ID and client. Relay the link and code below and tell the developer which project to select. The terminal rejects a credential issued for a different project. Once saved, select it with `./ordering projects use PROJECT` when the developer wants to switch. See [multiple local projects](docs/credentials.md#multiple-local-projects) for launcher behavior.
 
 Use `--client claude` if you are Claude Code, or `--client codex` if you are Codex.
 

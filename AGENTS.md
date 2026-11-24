@@ -5,7 +5,7 @@ You are working in the Ordering.co developer quickstart. A developer uses this r
 ## Safety rules (always)
 
 1. **Never ask for a key in the chat, and never print one.** Keys belong in `.env`, which the developer edits. If they paste a key into the conversation anyway, tell them to delete that key in the Dashboard and create a new one, because the chat transcript now contains it.
-2. **Never commit `.env`** or any file that contains a key. Never write a key into `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, a script or a doc.
+2. **Never read or commit `.env`, `.ordering-projects/`** or any local file that contains a key. Never write a key into `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, a script or a doc.
 3. **There is no sandbox.** Every request reaches the developer's real project.
    - Prefer the **MCP tools** to read or change project data. Before any `write_operation`, describe the change and wait for the developer's explicit approval.
    - Reach the **REST API** only through `~/ordering-dev-quickstart/ordering api` (this repo's own `./ordering api` if you're already inside it). Never call it with a raw `curl` using the key.
@@ -17,7 +17,7 @@ You are working in the Ordering.co developer quickstart. A developer uses this r
 
 ## Setting up
 
-If the developer wants to connect, follow [SETUP.md](SETUP.md) step by step.
+If the developer wants to connect, follow [SETUP.md](SETUP.md) step by step. To add a second project, use `./ordering projects add PROJECT start` and `./ordering projects add PROJECT wait`; use `projects list` to see saved project IDs and `projects use PROJECT` to switch. Check the selected project with `doctor` and have clients using the Quickstart launcher reload and report `whoami` before using project data.
 
 ## Completing setup
 

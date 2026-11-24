@@ -1,0 +1,38 @@
+{
+  "guidelinesVersion": "1.3.1",
+  "assetManifest": "https://brand.ordering.co/machine/asset-manifest.json",
+  "files": {
+    "ordering-lockup-color.svg": {
+      "url": "https://brand.ordering.co/assets/logos/ordering-lockup-color.svg",
+      "sha256": "aaf2820e52e52b5e82af79b9f9dae5d3327813f6b0dab444593ea29139d69778"
+    },
+    "ordering-lockup-color-reversed.svg": {
+      "url": "https://brand.ordering.co/assets/logos/ordering-lockup-color-reversed.svg",
+      "sha256": "efd721f5b4c43a87fc6305d8d2c0afaa12f322fc14d8669c2476e62f2482eeda"
+    },
+    "favicon.ico": {
+      "url": "https://brand.ordering.co/assets/icons/favicon.ico",
+      "sha256": "ac1a41a4aa79fe2c1110c24a9f4ad2e998db949ec8230918e4ba5f3c99efa889"
+    },
+    "InterVariable.woff2": {
+      "url": "https://brand.ordering.co/assets/fonts/inter/InterVariable.woff2",
+      "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3"
+    },
+    "Inter-OFL.txt": {
+      "url": "https://brand.ordering.co/assets/fonts/inter/OFL.txt",
+      "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+    },
+    "JetBrainsMonoVariable.woff2": {
+      "url": "https://brand.ordering.co/assets/fonts/jetbrains-mono/JetBrainsMono%5Bwght%5D.woff2",
+      "sha256": "fe7b565a583febc11ec94fa9aacf8a8180c21efe601f174a33c71a0b596346b7"
+    },
+    "JetBrainsMono-OFL.txt": {
+      "url": "https://brand.ordering.co/assets/fonts/jetbrains-mono/OFL.txt",
+      "sha256": "30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad"
+    },
+    "ordering.tokens.json": {
+      "url": "https://brand.ordering.co/machine/ordering.tokens.json",
+      "sha256": "4a31e2f09c7549893360675f87ba471df298b7e16e3d03c426fa55ad915016ec"
+    }
+  }
+}

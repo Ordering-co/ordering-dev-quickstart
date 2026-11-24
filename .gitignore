@@ -24,3 +24,10 @@ Thumbs.db
 # Locked installer runtime and private client configuration backups
 .clients/
 node_modules/
+
+# Locally saved Ordering connections and their active selection
+.ordering-projects/
+
+# Scoped Codex configuration and switch lock created by ordering codex --live
+/.codex/config.toml
+/.codex/.ordering-project-switch/

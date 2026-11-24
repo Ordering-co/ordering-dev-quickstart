@@ -30,6 +30,7 @@ Tests verify configuration formats and mocked protocol behavior. They do not pro
 | `install` | Probes authentication and launcher, registers detected clients, reads configs back; nonzero means incomplete |
 | `clients` | Reads recorded registrations; not a live call from each client |
 | `mcp` | Stdio launcher used by clients, loading only the MCP credential privately |
+| `codex --live` | Opens Codex in this checkout through its local App Server so the web selector can switch an idle chat |
 | `uninstall` | Removes unchanged recorded launcher entries; credentials stay in `.env` |
 | `logout` / `disconnect` | Removes integration then clears both local credentials; project stays; server keys remain valid |
 | `reset --client codex --install` | Logout, new browser pairing and installation; without `--install`, registration is not requested |

@@ -18,6 +18,30 @@ Ordering.co uses three kinds of credentials. They are not interchangeable.
 - **A server-side integration** (ERP, CRM, reporting, your own backend): API key, kept on the server and never shipped to a browser or a mobile app.
 - **An app where your customers log in:** session tokens from `POST /auth`, one per user.
 
+## Multiple local projects
+
+Each Quickstart checkout has its own project selector. The existing connection in the top-level `.env` appears as the legacy project. New connections use private files inside the ignored `.ordering-projects/` directory.
+
+| Command | What it does |
+|---|---|
+| `./ordering projects web` | Starts the browser selector on `http://127.0.0.1:4317/`. Requires Node.js 22+ and uses the same saved projects and active selection as the CLI. Use `--port PORT` if the port is busy. |
+| `./ordering projects list` | Lists the saved project IDs and marks the current selection. Run `doctor` to verify authentication or expiry. |
+| `./ordering projects add PROJECT` | Signs in to the requested project and saves its own credentials. The current selection stays in effect. |
+| `./ordering projects add PROJECT start` and `./ordering projects add PROJECT wait` | Run the same sign-in in two steps for an agent or a separate terminal. Use `code` to redisplay the pending code. |
+| `./ordering projects use [PROJECT]` | Selects a saved project by ID or prompts for one in an interactive terminal. Use `--legacy` to return to the top-level `.env`. |
+| `./ordering codex --live` | Opts this checkout into switching a running Codex chat from the web selector. Requires Node.js 22+ and Codex with the local App Server. |
+| `./ordering projects import QUICKSTART_DIRECTORY` | Verifies the saved MCP and any REST key in another checkout's top-level `.env` and saves a local profile. The source and current selection stay in place. |
+
+The selection applies to new Quickstart commands, including `api`, `doctor`, Google Maps commands and the MCP launcher. A client configured directly with an MCP URL follows its own URL. The selector applies within this Quickstart checkout.
+
+For live switching in Codex, use `./ordering codex --live` to start the chat and `./ordering projects web` in another terminal for the browser. Follow any checkout trust prompt in Codex. Quickstart writes a project-local `.codex/config.toml` at first setup. It pins the project on the `ordering_quickstart` launcher and disables the generic `ordering` entry within this checkout. Existing checkout configuration requires a review before setup.
+
+The browser confirms a live switch after `whoami` reports the new project in the same idle Codex chat. If a turn is running or several chats are open in the checkout, the browser asks you to finish the turn or leave a single chat available. Use the browser for live switching. Terminal selection and other supported clients pick up the project when opening a new connection.
+
+The web selector ships the [released Ordering.co Guidelines](https://brand.ordering.co/product/) tokens, logo masters and fonts in a local bundle. It loads assets offline. Use `node scripts/projects-web/brand.mjs --check` to verify the lock, `--freshness` to compare the published release, and `--sync` to restore the pinned assets from the release origin.
+
+Keeping **Read** scope and clearing **Also give my agent the REST API** in the browser gives the new project an MCP-only connection. REST commands require a REST key saved under the selected project.
+
 ## Rotating or disconnecting
 
 For MCP credentials saved by this quickstart, run `./ordering login --install`, complete browser sign-in and permission review, then collect the terminal's final result. If credentials were saved but registration failed, retry `./ordering install`. Reload running clients and observe `whoami` again. A login without `--install` only updates credentials; existing launcher paths use the new value on their next start, while a running process can keep the old one.
@@ -26,7 +50,7 @@ The browser defaults to 30 days; manual MCP key creation defaults to 7, currentl
 
 The REST option is checked by default and creates a separate, non-expiring credential with broad user permissions. Uncheck it for MCP-only sign-in. If a same-project REST key already exists, unchecking the option does not remove it: login preserves it and warns. To stop using it locally, use `logout` when you intend to disconnect both credentials; revoke unwanted REST keys separately in Dashboard → API Keys.
 
-`uninstall` preserves credentials; `logout` clears both local credentials after removing owned registrations; `reset --client claude --install` logs out then pairs and registers again. All preserve project settings. None revokes server access. Revoke MCP and REST keys independently in the Dashboard. Never revoke a key shared with another session as a test.
+`uninstall` removes owned client registrations and preserves saved credentials. With local project profiles, `logout` clears both credentials for the selected project and keeps the shared launcher registered. A standalone legacy connection also removes owned registrations on logout. `reset --client claude --install` logs out of the current project, then pairs and registers again. Revoke server access separately. Revoke MCP and REST keys independently in the Dashboard. Never revoke a key shared with another session as a test.
 
 For manual rotation use the private editor opened by `./ordering init`, then `doctor`, `install` and client reload. Agents must not read or edit `.env` themselves.
 
