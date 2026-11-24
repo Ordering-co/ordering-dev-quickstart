@@ -51,6 +51,8 @@ test('the local selector lists and switches the same projects as the CLI', async
   const html = await page.text();
   assert.match(html, /first-project[\s\S]*Active[\s\S]*second-project/);
   assert.ok(!html.includes(key));
+  assert.match(html, /aria-label="Switch to second-project"/);
+  assert.match(html, /aria-label="Copy add-project command"/);
   assert.match(html, /ordering-lockup-color\.svg" alt="Ordering\.co"/);
   assert.match(await (await fetch(address + '/brand.css')).text(), /--od-focus-ring-width: 2px/);
   assert.equal((await fetch(address + '/brand/InterVariable.woff2')).headers.get('content-type'), 'font/woff2');
@@ -67,7 +69,11 @@ test('the local selector lists and switches the same projects as the CLI', async
   assert.equal((await select('unknown-project')).status, 400);
   assert.match(execFileSync(ordering, ['projects', 'list'], { encoding: 'utf8' }), /first-project \(legacy, active\)/);
 
-  assert.equal((await select('second-project')).status, 303);
+  const switched = await select('second-project');
+  assert.equal(switched.status, 303);
+  const switchedPage = await fetch(new URL(switched.headers.get('location'), address));
+  assert.match(await switchedPage.text(), /Switched to <strong>second-project<\/strong>/);
+  assert.doesNotMatch(await (await fetch(address + '/?selected=first-project')).text(), /Switched to/);
   assert.match(execFileSync(ordering, ['projects', 'list'], { encoding: 'utf8' }), /second-project \(active\)/);
   assert.match(await (await fetch(address)).text(), /second-project[\s\S]*Active/);
   assert.equal((await select('first-project')).status, 303);

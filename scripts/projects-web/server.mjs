@@ -23,6 +23,7 @@ const command = (...argv) => run(ordering, ['projects', ...argv], { encoding: 'u
 const projectId = /^[a-z0-9_-]+$/;
 const brand = await readBrand();
 const css = await readFile(new URL('./style.css', import.meta.url));
+const actions = await readFile(new URL('./actions.js', import.meta.url));
 
 async function projects() {
   const { stdout } = await command('list', '--tsv');
@@ -33,13 +34,13 @@ async function projects() {
   });
 }
 
-function page(saved, error = '') {
-  const count = saved.length;
-  const rows = saved.map(({ id, active }) => `
+function page(saved, { error, selected } = {}) {
+  const active = saved.find(project => project.active);
+  const rows = [...saved].sort((a, b) => Number(b.active) - Number(a.active)).map(({ id, active }) => `
     <li class="project${active ? ' project-active' : ''}">
       <span class="project-name">${id}</span>
       ${active ? '<span class="badge">Active</span>' : `<form method="post" action="/select">
-        <button type="submit" name="project" value="${id}" aria-label="Select project ${id}">Select</button>
+        <button type="submit" name="project" value="${id}" aria-label="Switch to ${id}">Switch</button>
       </form>`}
     </li>`).join('');
   return `<!doctype html>
@@ -51,24 +52,48 @@ function page(saved, error = '') {
   <link rel="icon" href="/brand/favicon.ico">
   <link rel="stylesheet" href="/brand.css">
   <link rel="stylesheet" href="/style.css">
+  <script src="/actions.js" defer></script>
 </head>
 <body>
-  <main>
-    <header>
+  <header class="topbar">
+    <div class="topbar-inner">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/brand/ordering-lockup-color-reversed.svg">
         <img src="/brand/ordering-lockup-color.svg" alt="Ordering.co" width="132">
       </picture>
       <span class="product">Developer Quickstart</span>
-    </header>
+    </div>
+  </header>
+  <main>
     <h1>Local projects</h1>
     <p class="intro">Choose the project Quickstart uses for new commands and MCP sessions.</p>
     ${error ? `<p class="error" role="alert">${error}</p>` : ''}
-    ${count ? `<ul aria-label="Saved projects">${rows}</ul>` : '<p class="empty">No projects are connected in this checkout.</p>'}
-    <footer>
-      <p>Add a project in your terminal with <code>./ordering projects add PROJECT</code>.</p>
-      ${count ? '<p>After switching, reload your MCP client and run <code>whoami</code> to verify the project.</p>' : ''}
-    </footer>
+    ${active && active.id === selected ? `<p class="feedback" role="status" tabindex="-1" autofocus>Switched to <strong>${active.id}</strong>. New MCP sessions will use this project.</p>` : ''}
+    <div class="workspace">
+      <section class="projects-panel" aria-labelledby="saved-projects">
+        <div class="panel-header">
+          <h2 id="saved-projects">Saved projects</h2>
+          <span class="project-count">${saved.length} ${saved.length === 1 ? 'project' : 'projects'}</span>
+        </div>
+        ${saved.length ? `<ul aria-labelledby="saved-projects">${rows}</ul>`
+          : '<div class="empty"><p>No projects are connected in this checkout.</p><p>Run the add command to sign in and add your first project.</p></div>'}
+      </section>
+      <aside class="help">
+        <section aria-labelledby="add-project">
+          <h2 id="add-project">Add a project</h2>
+          <p>Run this in your Quickstart checkout, then reload this page.</p>
+          <div class="command">
+            <code id="add-command">./ordering projects add PROJECT</code>
+            <button type="button" class="copy-command" aria-label="Copy add-project command" hidden>Copy</button>
+          </div>
+          <p class="copy-status" role="status"></p>
+        </section>
+        ${saved.length ? `<section class="mcp-help" aria-labelledby="mcp">
+          <h2 id="mcp">MCP sessions</h2>
+          <p>Your selection applies to new Quickstart MCP connections. Open connections keep their current project.</p>
+        </section>` : ''}
+      </aside>
+    </div>
   </main>
 </body>
 </html>`;
@@ -79,21 +104,25 @@ function send(response, status, body, type = 'text/plain; charset=utf-8') {
   response.end(body);
 }
 
-function show(response, status, saved, error) {
-  send(response, status, page(saved, error), 'text/html; charset=utf-8');
+function show(response, status, saved, options) {
+  send(response, status, page(saved, options), 'text/html; charset=utf-8');
 }
 
 const server = createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+  response.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
   const host = request.headers.host;
   const boundPort = server.address().port;
   if (host !== `127.0.0.1:${boundPort}` && host !== `localhost:${boundPort}`) {
     return send(response, 403, 'Open the selector on localhost.');
   }
   try {
-    if (request.method === 'GET' && request.url === '/') return show(response, 200, await projects());
+    if (request.method === 'GET' && (request.url === '/' || request.url.startsWith('/?'))) {
+      const selected = new URLSearchParams(request.url.slice(2)).get('selected');
+      return show(response, 200, await projects(), { selected });
+    }
+    if (request.method === 'GET' && request.url === '/actions.js') return send(response, 200, actions, 'text/javascript; charset=utf-8');
     if (request.method === 'GET' && request.url === '/style.css') return send(response, 200, css, 'text/css; charset=utf-8');
     if (request.method === 'GET' && request.url === '/brand.css') return send(response, 200, brand.styles, 'text/css; charset=utf-8');
     const asset = request.method === 'GET' && brand.assets.get(request.url);
@@ -111,12 +140,12 @@ const server = createServer(async (request, response) => {
     const ids = new URLSearchParams(body).getAll('project');
     const saved = await projects();
     if (ids.length !== 1 || !saved.some(project => project.id === ids[0])) {
-      return show(response, 400, saved, 'That project is unavailable. Choose a saved project below.');
+      return show(response, 400, saved, { error: 'That project is unavailable. Choose a saved project below.' });
     }
     await command('use', ids[0]);
-    response.writeHead(303, { Location: '/' }).end();
+    response.writeHead(303, { Location: '/?selected=' + encodeURIComponent(ids[0]) }).end();
   } catch {
-    show(response, 500, [], 'Quickstart could not complete that request. Reload the page to try again.');
+    show(response, 500, [], { error: 'Quickstart could not complete that request. Reload the page to try again.' });
   }
 });
 

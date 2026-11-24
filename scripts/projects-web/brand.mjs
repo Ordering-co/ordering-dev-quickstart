@@ -9,7 +9,7 @@ const checksum = data => createHash('sha256').update(data).digest('hex');
 
 const foundationRoles = [
   'font-sans', 'font-mono', 'font-mono-ligatures', 'font-weight-medium',
-  'font-weight-semibold', 'font-weight-bold', 'font-size-7', 'font-size-product-content',
+  'font-weight-semibold', 'font-weight-bold', 'font-size-7', 'font-size-8', 'font-size-product-content',
   'font-size-product-ui', 'line-heading', 'line-body', 'tracking-heading',
   'space-1', 'space-2', 'space-3', 'space-4', 'space-5', 'space-6', 'space-7',
   'space-8', 'radius-control', 'radius-panel', 'radius-round', 'stroke',
